@@ -1,70 +1,29 @@
 'use client'
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { motion, AnimatePresence, useInView, useSpring, useMotionValue, animate } from 'framer-motion'
+import { useState, useEffect, useRef } from 'react'
+import { motion, AnimatePresence, useInView } from 'framer-motion'
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    TYPES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 type Page = 'home' | 'login' | 'signup' | 'dashboard' | 'pricing' | 'forgot' | 'logout' | 'about' | 'contact' | 'privacy' | 'terms' | '404'
 type DashTab = 'overview' | 'planner' | 'tasks' | 'calendar' | 'focus' | 'analytics' | 'notes' | 'badges' | 'profile' | 'settings' | 'notifications' | 'ai-buddy'
+
+interface User {
+  id: string; auth_id: string; name: string; email: string
+  avatar_url?: string; university?: string; course?: string; level?: string
+  plan: 'free' | 'pro'; xp: number; streak: number; currency: 'ngn' | 'usd'
+  onboarded: boolean; dark_mode: boolean
+}
 interface Task { id: string; title: string; subject: string; done: boolean; color: string; priority: 'high' | 'medium' | 'low'; deadline: string }
-interface PlanDay { day: string; sessions: { subject: string; time: string; color: string; duration: number }[] }
-interface Badge { id: string; name: string; icon: string; desc: string; earned: boolean; earnedAt?: string }
-interface Notification { id: string; message: string; type: 'exam' | 'streak' | 'tip' | 'system'; read: boolean; time: string }
-interface Note { id: string; subject: string; content: string; updatedAt: string; color: string }
+interface Note { id: string; subject: string; content: string; updated_at: string; color: string }
+interface Exam { id: string; subject: string; exam_date: string; readiness: number; notes: string }
+interface Notification { id: string; message: string; type: 'exam' | 'streak' | 'tip' | 'system'; read: boolean; created_at: string }
+interface PlanDay { day: string; sessions: { subject: string; time: string; color: string; duration: number; topic: string }[] }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   MOCK DATA
+   CONSTANTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-const COLORS = ['#7c3aed', '#db2777', '#6d28d9', '#d97706', '#059669', '#dc2626', '#0891b2', '#7c3aed']
-
-const MOCK_TASKS: Task[] = [
-  { id: '1', title: 'Complete Calculus Chapter 5', subject: 'Mathematics', done: false, color: '#7c3aed', priority: 'high', deadline: '2026-03-20' },
-  { id: '2', title: 'Review Wave Motion Notes', subject: 'Physics', done: true, color: '#db2777', priority: 'medium', deadline: '2026-03-18' },
-  { id: '3', title: 'Practice Organic Reactions', subject: 'Chemistry', done: false, color: '#6d28d9', priority: 'high', deadline: '2026-03-21' },
-  { id: '4', title: 'Write Essay Draft', subject: 'English', done: false, color: '#d97706', priority: 'low', deadline: '2026-03-22' },
-  { id: '5', title: 'Biology Cell Theory Reading', subject: 'Biology', done: false, color: '#059669', priority: 'medium', deadline: '2026-03-23' },
-]
-
-const MOCK_NOTES: Note[] = [
-  { id: '1', subject: 'Mathematics', content: 'Integration by parts: ∫u dv = uv - ∫v du\nRemember to identify u and dv carefully before integrating.', updatedAt: '2 hours ago', color: '#7c3aed' },
-  { id: '2', subject: 'Physics', content: 'Wave equation: v = fλ\nFrequency and wavelength are inversely proportional at constant wave speed.', updatedAt: 'Yesterday', color: '#db2777' },
-  { id: '3', subject: 'Chemistry', content: 'Organic reactions — nucleophilic substitution happens when nucleophile attacks electrophilic carbon.', updatedAt: '2 days ago', color: '#6d28d9' },
-]
-
-const MOCK_BADGES: Badge[] = [
-  { id: '1', name: 'First Step', icon: '🎯', desc: 'Complete your first task', earned: true, earnedAt: 'Mar 15' },
-  { id: '2', name: '7-Day Warrior', icon: '🔥', desc: 'Study 7 days in a row', earned: true, earnedAt: 'Mar 16' },
-  { id: '3', name: 'Plan Master', icon: '🗓️', desc: 'Generate your first AI study plan', earned: true, earnedAt: 'Mar 14' },
-  { id: '4', name: 'Night Owl', icon: '🦉', desc: 'Study after 10 PM', earned: false },
-  { id: '5', name: 'Early Bird', icon: '🌅', desc: 'Study before 7 AM', earned: false },
-  { id: '6', name: 'Exam Slayer', icon: '⚔️', desc: 'Complete all tasks before an exam', earned: false },
-  { id: '7', name: 'Century', icon: '💯', desc: 'Complete 100 tasks total', earned: false },
-  { id: '8', name: 'Scholar', icon: '🎓', desc: 'Reach Level 10', earned: false },
-  { id: '9', name: 'Streak Legend', icon: '👑', desc: '30-day study streak', earned: false },
-]
-
-const MOCK_NOTIFICATIONS: Notification[] = [
-  { id: '1', message: 'Your Mathematics exam is in 3 days! 📚', type: 'exam', read: false, time: '2 min ago' },
-  { id: '2', message: 'Amazing! You just hit a 9-day study streak 🔥', type: 'streak', read: false, time: '1 hour ago' },
-  { id: '3', message: 'Study tip: Review notes within 24 hours of learning for better retention', type: 'tip', read: true, time: 'Yesterday' },
-  { id: '4', message: 'You earned the "Plan Master" badge! 🗓️', type: 'system', read: true, time: '2 days ago' },
-]
-
-const TESTIMONIALS = [
-  { name: 'Chioma Okafor', role: 'Medical Student, UNILAG', rating: 5, text: 'StudyPilot completely transformed how I prepare for exams. The AI timetable actually fits my real schedule and the readiness score keeps me accountable.', avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=120&q=80&fit=crop&crop=face' },
-  { name: 'Emeka Nwachukwu', role: 'Engineering Student, OAU', rating: 5, text: "I went from failing two courses to making Dean's List in one semester. The AI knows exactly how much time I need and adjusts when I fall behind.", avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=80&fit=crop&crop=face' },
-  { name: 'Fatima Al-Hassan', role: 'Law Student, ABU', rating: 5, text: 'The analytics are incredible. I can see exactly where I spend study time and the AI gives weekly insights. Worth every single naira.', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&q=80&fit=crop&crop=face' },
-  { name: 'James Okonkwo', role: 'Computer Science, University of London', rating: 5, text: 'As an international student I tried many apps. StudyPilot is the only one that actually understands exam pressure and creates realistic schedules.', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&q=80&fit=crop&crop=face' },
-]
-
-const FEATURES = [
-  { icon: '🤖', title: 'AI Study Generator', desc: 'Personalized study timetable built by AI based on your subjects, deadlines, and available hours. Ready in seconds.' },
-  { icon: '📅', title: 'Study Calendar', desc: 'Full weekly calendar view with color-coded subjects. Never miss a session again.' },
-  { icon: '⏱️', title: 'Focus Timer', desc: 'Pomodoro-style focus sessions with breaks to maximize deep work and minimize burnout.' },
-  { icon: '📊', title: 'Progress Analytics', desc: 'Study heatmap, subject breakdown, readiness scores and weekly insights all in one dashboard.' },
-]
-
+const COLORS = ['#7c3aed', '#db2777', '#6d28d9', '#d97706', '#059669', '#dc2626', '#0891b2']
 const STUDY_TIPS = [
   'Review your notes within 24 hours of learning for 70% better retention 🧠',
   'The Pomodoro technique — 25 min focus + 5 min break — boosts productivity by 40% ⏱️',
@@ -72,23 +31,90 @@ const STUDY_TIPS = [
   'Sleep is when your brain consolidates memories — never skip sleep before exams 😴',
   'Spaced repetition beats cramming every time — review topics over multiple days 📅',
 ]
+const TESTIMONIALS = [
+  { name: 'Chioma Okafor', role: 'Medical Student, UNILAG', rating: 5, text: 'StudyPilot completely transformed how I prepare for exams. The AI timetable actually fits my real schedule and the readiness score keeps me accountable.', avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=120&q=80&fit=crop&crop=face' },
+  { name: 'Emeka Nwachukwu', role: 'Engineering Student, OAU', rating: 5, text: "I went from failing two courses to making Dean's List in one semester. The AI knows exactly how much time I need and adjusts when I fall behind.", avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=80&fit=crop&crop=face' },
+  { name: 'Fatima Al-Hassan', role: 'Law Student, ABU', rating: 5, text: 'The analytics are incredible. I can see exactly where I spend study time and the AI gives weekly insights. Worth every single naira.', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&q=80&fit=crop&crop=face' },
+  { name: 'James Okonkwo', role: 'Computer Science, University of London', rating: 5, text: 'As an international student I tried many apps. StudyPilot is the only one that actually understands exam pressure and creates realistic schedules.', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&q=80&fit=crop&crop=face' },
+]
+const FEATURES = [
+  { icon: '🤖', title: 'AI Study Generator', desc: 'Personalized study timetable built by AI based on your subjects, deadlines, and available hours. Ready in seconds.' },
+  { icon: '📅', title: 'Study Calendar', desc: 'Full weekly calendar view with color-coded subjects. Never miss a session again.' },
+  { icon: '⏱️', title: 'Focus Timer', desc: 'Pomodoro-style focus sessions with breaks to maximize deep work and minimize burnout.' },
+  { icon: '📊', title: 'Progress Analytics', desc: 'Study heatmap, subject breakdown, readiness scores and weekly insights all in one dashboard.' },
+]
+const ALL_BADGES = [
+  { id: 'first-task', name: 'First Step', icon: '🎯', desc: 'Complete your first task' },
+  { id: 'seven-day', name: '7-Day Warrior', icon: '🔥', desc: 'Study 7 days in a row' },
+  { id: 'first-plan', name: 'Plan Master', icon: '🗓️', desc: 'Generate your first AI study plan' },
+  { id: 'night-owl', name: 'Night Owl', icon: '🦉', desc: 'Study after 10 PM' },
+  { id: 'early-bird', name: 'Early Bird', icon: '🌅', desc: 'Study before 7 AM' },
+  { id: 'exam-slayer', name: 'Exam Slayer', icon: '⚔️', desc: 'Complete all tasks before an exam' },
+  { id: 'century', name: 'Century', icon: '💯', desc: 'Complete 100 tasks total' },
+  { id: 'scholar', name: 'Scholar', icon: '🎓', desc: 'Reach Level 10' },
+  { id: 'legend', name: 'Streak Legend', icon: '👑', desc: '30-day study streak' },
+]
 
-const CALENDAR_COLORS: Record<string, string> = {
-  Mathematics: '#7c3aed',
-  Physics: '#db2777',
-  Chemistry: '#6d28d9',
-  English: '#d97706',
-  Biology: '#059669',
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   API HELPERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+function getToken() { return typeof window !== 'undefined' ? localStorage.getItem('sp_token') || '' : '' }
+function getUser(): User | null {
+  if (typeof window === 'undefined') return null
+  const u = localStorage.getItem('sp_user')
+  return u ? JSON.parse(u) : null
+}
+function saveUser(user: User) { localStorage.setItem('sp_user', JSON.stringify(user)) }
+function clearAuth() { localStorage.removeItem('sp_token'); localStorage.removeItem('sp_user') }
+
+async function api(path: string, options: RequestInit = {}) {
+  const token = getToken()
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  })
+  return res.json()
+}
+
+function getXPLevel(xp: number) {
+  const level = Math.floor(xp / 100) + 1
+  const progress = xp % 100
+  const titles = ['Beginner', 'Student', 'Scholar', 'Academic', 'Expert', 'Master', 'Champion', 'Legend', 'Elite', 'Genius']
+  return { level, progress, title: titles[Math.min(level - 1, titles.length - 1)] }
+}
+
+function getGreeting(name = '') {
+  const h = new Date().getHours()
+  if (h < 12) return `Good morning${name ? ', ' + name : ''} ☀️`
+  if (h < 17) return `Good afternoon${name ? ', ' + name : ''} 👋`
+  if (h < 21) return `Good evening${name ? ', ' + name : ''} 🌆`
+  return `Study time${name ? ', ' + name : ''} 🌙`
+}
+
+function daysLeft(dateStr: string) {
+  const diff = new Date(dateStr).getTime() - new Date().getTime()
+  return Math.ceil(diff / (1000 * 60 * 60 * 24))
+}
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+  if (mins < 1) return 'Just now'
+  if (mins < 60) return `${mins}m ago`
+  if (hours < 24) return `${hours}h ago`
+  return `${days}d ago`
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   ANIMATION VARIANTS
+   ANIMATION HELPERS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-const spring = { type: 'spring', damping: 20, stiffness: 300 }
 const fadeUp = { hidden: { opacity: 0, y: 32 }, show: { opacity: 1, y: 0, transition: { duration: .6, ease: [.22, 1, .36, 1] } } }
-const fadeIn = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: .4 } } }
-const scaleIn = { hidden: { opacity: 0, scale: .9 }, show: { opacity: 1, scale: 1, transition: spring } }
-const slideRight = { hidden: { opacity: 0, x: -20 }, show: { opacity: 1, x: 0, transition: { duration: .4, ease: [.22, 1, .36, 1] } } }
 const stagger = (d = .08) => ({ hidden: {}, show: { transition: { staggerChildren: d } } })
 
 function Reveal({ children, className = '', delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
@@ -104,25 +130,7 @@ function Reveal({ children, className = '', delay = 0 }: { children: React.React
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   UTILITIES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-function getGreeting(name = '') {
-  const h = new Date().getHours()
-  if (h < 12) return `Good morning${name ? ', ' + name : ''} ☀️`
-  if (h < 17) return `Good afternoon${name ? ', ' + name : ''} 👋`
-  if (h < 21) return `Good evening${name ? ', ' + name : ''} 🌆`
-  return `Study time${name ? ', ' + name : ''} 🌙`
-}
-
-function getXPLevel(xp: number) {
-  const level = Math.floor(xp / 100) + 1
-  const progress = xp % 100
-  const titles = ['Beginner', 'Student', 'Scholar', 'Academic', 'Expert', 'Master', 'Champion', 'Legend', 'Elite', 'Genius']
-  return { level, progress, title: titles[Math.min(level - 1, titles.length - 1)] }
-}
-
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   SHARED UI COMPONENTS
+   SHARED UI
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function Btn({ children, onClick, outline = false, white = false, sm = false, className = '', type = 'button', disabled = false }: any) {
   const base = `inline-flex items-center justify-center gap-2 font-semibold rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${sm ? 'px-4 py-2 text-sm' : 'px-6 py-3 text-sm'}`
@@ -149,17 +157,15 @@ function Logo({ onClick, dark = false }: { onClick?: () => void; dark?: boolean 
           <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
         </svg>
       </div>
-      <span className={`font-extrabold text-lg tracking-tight ${dark ? 'text-white' : 'text-gray-900'}`}>
-        Study<span className="text-purple-500">Pilot</span>
-      </span>
+      <span className={`font-extrabold text-lg tracking-tight ${dark ? 'text-white' : 'text-gray-900'}`}>Study<span className="text-purple-500">Pilot</span></span>
     </button>
   )
 }
 
-function BackBtn({ onClick, label = 'Back', dark = false }: { onClick: () => void; label?: string; dark?: boolean }) {
+function BackBtn({ onClick, label = 'Back to home' }: { onClick: () => void; label?: string }) {
   return (
     <motion.button whileHover={{ x: -3 }} whileTap={{ scale: .97 }} onClick={onClick}
-      className={`flex items-center gap-2 text-sm font-medium mb-7 transition-colors group ${dark ? 'text-white/60 hover:text-white' : 'text-gray-400 hover:text-purple-600'}`}>
+      className="flex items-center gap-2 text-sm font-medium mb-7 text-gray-400 hover:text-purple-600 transition-colors group">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
         className="group-hover:-translate-x-1 transition-transform duration-200">
         <path d="M19 12H5M12 5l-7 7 7 7" />
@@ -169,7 +175,6 @@ function BackBtn({ onClick, label = 'Back', dark = false }: { onClick: () => voi
   )
 }
 
-/* Google Logo SVG */
 function GoogleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24">
@@ -181,7 +186,6 @@ function GoogleIcon() {
   )
 }
 
-/* GitHub Logo SVG */
 function GitHubIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -190,7 +194,10 @@ function GitHubIcon() {
   )
 }
 
-/* Confetti */
+function Spinner() {
+  return <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+}
+
 function Confetti({ active }: { active: boolean }) {
   if (!active) return null
   return (
@@ -208,7 +215,6 @@ function Confetti({ active }: { active: boolean }) {
   )
 }
 
-/* Animated counter */
 function Counter({ to, suffix = '' }: { to: number; suffix?: string }) {
   const ref = useRef(null)
   const inView = useInView(ref, { once: true })
@@ -227,12 +233,37 @@ function Counter({ to, suffix = '' }: { to: number; suffix?: string }) {
   return <span ref={ref}>{val.toLocaleString()}{suffix}</span>
 }
 
-/* Cookie banner */
+
+function ScrollToTop() {
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    const fn = () => setShow(window.scrollY > 400)
+    window.addEventListener('scroll', fn, { passive: true })
+    return () => window.removeEventListener('scroll', fn)
+  }, [])
+  if (!show) return null
+  return (
+    <motion.button
+      initial={{ opacity: 0, scale: 0 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0 }}
+      whileHover={{ scale: 1.1, y: -2 }}
+      whileTap={{ scale: .9 }}
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      className="fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full bg-gradient-to-br from-purple-600 to-pink-500 text-white shadow-lg shadow-purple-200 flex items-center justify-center"
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 15l-6-6-6 6" />
+      </svg>
+    </motion.button>
+  )
+}
+
 function CookieBanner() {
   const [show, setShow] = useState(true)
   if (!show) return null
   return (
-    <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
+    <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
       className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:max-w-md z-50 bg-white border border-gray-200 rounded-2xl p-5 shadow-2xl">
       <p className="text-sm text-gray-600 mb-4">🍪 We use cookies to improve your experience. By continuing you agree to our <button className="text-purple-600 font-semibold">Privacy Policy</button>.</p>
       <div className="flex gap-3">
@@ -246,7 +277,7 @@ function CookieBanner() {
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    NAVBAR
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-function Navbar({ setPage, dark = false }: { setPage: (p: Page) => void; dark?: boolean }) {
+function Navbar({ setPage }: { setPage: (p: Page) => void }) {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   useEffect(() => {
@@ -257,20 +288,19 @@ function Navbar({ setPage, dark = false }: { setPage: (p: Page) => void; dark?: 
   return (
     <>
       <motion.nav initial={{ y: -56, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: .5 }}
-        className={`fixed top-0 inset-x-0 z-50 h-16 transition-all duration-300 ${scrolled || dark ? 'bg-white/96 backdrop-blur-md shadow-sm border-b border-gray-100' : 'bg-transparent'}`}>
+        className={`fixed top-0 inset-x-0 z-50 h-16 transition-all duration-300 ${scrolled ? 'bg-white/96 backdrop-blur-md shadow-sm border-b border-gray-100' : 'bg-white'}`}>
         <div className="max-w-6xl mx-auto px-6 h-full flex items-center justify-between">
           <Logo onClick={() => setPage('home')} />
           <div className="hidden md:flex items-center gap-7">
             {[['Features', 'home'], ['How it Works', 'home'], ['Pricing', 'pricing'], ['About', 'about']].map(([l, p]) => (
-              <button key={l} onClick={() => setPage(p as Page)}
-                className="text-sm font-medium text-gray-500 hover:text-purple-600 transition-colors">{l}</button>
+              <button key={l} onClick={() => setPage(p as Page)} className="text-sm font-medium text-gray-500 hover:text-purple-600 transition-colors">{l}</button>
             ))}
           </div>
           <div className="hidden md:flex items-center gap-3">
-            <button onClick={() => setPage('login')} className="text-sm font-semibold text-gray-500 hover:text-gray-900 px-3 py-2 transition-colors">Log in</button>
+            <button onClick={() => setPage('login')} className="text-sm font-semibold text-gray-500 hover:text-gray-900 px-3 py-2">Log in</button>
             <Btn sm onClick={() => setPage('signup')}>Get Started Free</Btn>
           </div>
-          <button onClick={() => setOpen(!open)} className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors">
+          <button onClick={() => setOpen(!open)} className="md:hidden p-2 rounded-lg hover:bg-gray-100">
             <div className="space-y-1.5 w-5">
               <motion.span animate={{ rotate: open ? 45 : 0, y: open ? 7 : 0 }} className="block h-0.5 bg-gray-800 rounded-full" />
               <motion.span animate={{ opacity: open ? 0 : 1 }} className="block h-0.5 bg-gray-800 rounded-full" />
@@ -305,7 +335,6 @@ function Navbar({ setPage, dark = false }: { setPage: (p: Page) => void; dark?: 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function Landing({ setPage }: { setPage: (p: Page) => void }) {
   const [currency, setCurrency] = useState<'usd' | 'ngn'>('usd')
-
   return (
     <div className="bg-white min-h-screen">
       <Navbar setPage={setPage} />
@@ -315,27 +344,19 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
           <div className="absolute -top-20 -right-40 w-[600px] h-[600px] rounded-full bg-purple-50 blur-[120px]" />
           <div className="absolute top-40 -left-32 w-[400px] h-[400px] rounded-full bg-pink-50 blur-[100px]" />
-          <motion.div animate={{ y: [0, -20, 0], rotate: [0, 5, 0] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute top-32 right-[15%] text-4xl">📚</motion.div>
-          <motion.div animate={{ y: [0, 20, 0], rotate: [0, -5, 0] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
-            className="absolute top-48 left-[10%] text-3xl">⏱️</motion.div>
-          <motion.div animate={{ y: [0, -15, 0] }} transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: .5 }}
-            className="absolute bottom-32 right-[20%] text-3xl">🎯</motion.div>
-          <motion.div animate={{ y: [0, 15, 0], rotate: [0, 10, 0] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-            className="absolute bottom-48 left-[20%] text-2xl">🏆</motion.div>
+          <motion.div animate={{ y: [0, -20, 0], rotate: [0, 5, 0] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }} className="absolute top-32 right-[15%] text-4xl">📚</motion.div>
+          <motion.div animate={{ y: [0, 20, 0], rotate: [0, -5, 0] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 1 }} className="absolute top-48 left-[10%] text-3xl">⏱️</motion.div>
+          <motion.div animate={{ y: [0, -15, 0] }} transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: .5 }} className="absolute bottom-32 right-[20%] text-3xl">🎯</motion.div>
+          <motion.div animate={{ y: [0, 15, 0], rotate: [0, 10, 0] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 2 }} className="absolute bottom-48 left-[20%] text-2xl">🏆</motion.div>
         </div>
-
         <div className="max-w-6xl mx-auto relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-center">
             <motion.div variants={stagger(.1)} initial="hidden" animate="show" className="max-w-xl">
-              <motion.div variants={fadeUp}
-                className="inline-flex items-center gap-2 bg-purple-50 border border-purple-100 text-purple-700 text-xs font-bold px-4 py-2 rounded-full mb-6 tracking-wide">
-                <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
-                AI-Powered Study Planning
+              <motion.div variants={fadeUp} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-100 text-purple-700 text-xs font-bold px-4 py-2 rounded-full mb-6">
+                <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" /> AI-Powered Study Planning
               </motion.div>
               <motion.h1 variants={fadeUp} className="text-5xl lg:text-[56px] font-black text-gray-900 leading-[1.08] tracking-tight mb-5">
-                Your AI-Powered<br />
-                <span className="bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">Study Planner</span>
+                Your AI-Powered<br /><span className="bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">Study Planner</span>
               </motion.h1>
               <motion.p variants={fadeUp} className="text-gray-500 text-lg leading-relaxed mb-8">
                 Plan smarter, study better. StudyPilot uses AI to create personalized study plans, track your progress, and help you ace every exam — automatically.
@@ -343,7 +364,7 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
               <motion.div variants={fadeUp} className="flex flex-wrap gap-3 mb-8">
                 <Btn onClick={() => setPage('signup')} className="px-8 py-3.5 text-base">Get Started Free →</Btn>
                 <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .98 }}
-                  className="flex items-center gap-2 text-gray-500 font-semibold text-sm px-4 py-3.5 rounded-xl hover:text-purple-600 transition-colors">
+                  className="flex items-center gap-2 text-gray-500 font-semibold text-sm px-4 py-3.5 rounded-xl hover:text-purple-600">
                   <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="#7c3aed"><path d="M8 5v14l11-7z" /></svg>
                   </div>
@@ -352,55 +373,42 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
               </motion.div>
               <motion.div variants={fadeUp} className="flex items-center gap-3">
                 <div className="flex -space-x-2">
-                  {TESTIMONIALS.slice(0, 4).map((t, i) => (
-                    <img key={i} src={t.avatar} alt={t.name} className="w-9 h-9 rounded-full border-2 border-white object-cover shadow-sm" />
-                  ))}
+                  {TESTIMONIALS.map((t, i) => <img key={i} src={t.avatar} alt={t.name} className="w-9 h-9 rounded-full border-2 border-white object-cover shadow-sm" />)}
                 </div>
                 <div>
                   <Stars n={5} />
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    <strong className="text-gray-700"><Counter to={2400} suffix="+" /></strong> students already planning smarter
-                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5"><strong className="text-gray-700"><Counter to={2400} suffix="+" /></strong> students already planning smarter</p>
                 </div>
               </motion.div>
             </motion.div>
-
-            {/* Hero mockup */}
-            <motion.div initial={{ opacity: 0, y: 40, scale: .96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: .8, delay: .35, ease: [.22, 1, .36, 1] }} className="relative">
+            {/* Hero app preview */}
+            <motion.div initial={{ opacity: 0, y: 40, scale: .96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: .8, delay: .35, ease: [.22, 1, .36, 1] }} className="relative">
               <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}>
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_24px_80px_rgba(0,0,0,.12)] overflow-hidden">
                   <div className="bg-gray-50 border-b border-gray-100 px-4 py-3 flex items-center gap-2">
-                    <div className="flex gap-1.5">
-                      <div className="w-3 h-3 rounded-full bg-red-400" /><div className="w-3 h-3 rounded-full bg-yellow-400" /><div className="w-3 h-3 rounded-full bg-green-400" />
-                    </div>
+                    <div className="flex gap-1.5"><div className="w-3 h-3 rounded-full bg-red-400" /><div className="w-3 h-3 rounded-full bg-yellow-400" /><div className="w-3 h-3 rounded-full bg-green-400" /></div>
                     <div className="flex-1 bg-white rounded-md px-3 py-1 text-[11px] text-gray-400 border border-gray-200 ml-2 truncate">studypilot.app/dashboard</div>
                   </div>
                   <div className="p-5 bg-gradient-to-br from-purple-50/30 to-white">
                     <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <p className="text-xs font-black text-gray-900">Good morning, Amaka! ☀️</p>
-                        <p className="text-[10px] text-gray-400">Day 9 streak 🔥 Keep it up!</p>
-                      </div>
+                      <div><p className="text-xs font-black text-gray-900">Good morning! ☀️</p><p className="text-[10px] text-gray-400">Day 9 streak 🔥 Keep it up!</p></div>
                       <div className="bg-purple-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg">+ New Plan</div>
                     </div>
                     <div className="grid grid-cols-4 gap-2 mb-4">
                       {[['🔥', '9d', 'Streak'], ['⏱', '3.5h', 'Today'], ['✅', '72%', 'Done'], ['🎯', '78%', 'Ready']].map(([ic, v, l]) => (
                         <div key={l} className="bg-white rounded-xl p-2 border border-gray-100 shadow-sm text-center">
-                          <div className="text-sm mb-0.5">{ic}</div>
-                          <div className="text-xs font-black text-purple-600">{v}</div>
-                          <div className="text-[8px] text-gray-400">{l}</div>
+                          <div className="text-sm mb-0.5">{ic}</div><div className="text-xs font-black text-purple-600">{v}</div><div className="text-[8px] text-gray-400">{l}</div>
                         </div>
                       ))}
                     </div>
                     <div className="bg-white rounded-xl p-3 border border-gray-100 mb-3">
-                      <p className="text-[10px] font-bold text-gray-600 mb-2">Today&apos;s Tasks</p>
-                      {MOCK_TASKS.slice(0, 3).map(t => (
-                        <div key={t.id} className="flex items-center gap-2 py-1">
-                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${t.done ? 'bg-green-500 border-green-500' : 'border-gray-300'}`}>
-                            {t.done && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>}
+                      <p className="text-[10px] font-bold text-gray-600 mb-2">Subject Progress</p>
+                      {[['Mathematics', 75, '#7c3aed'], ['Physics', 50, '#db2777'], ['Chemistry', 35, '#6d28d9']].map(([s, p, c]) => (
+                        <div key={s as string} className="mb-2">
+                          <div className="flex justify-between text-[9px] mb-1"><span className="text-gray-600">{s}</span><span className="text-gray-400">{p}%</span></div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <motion.div initial={{ width: 0 }} animate={{ width: `${p}%` }} transition={{ duration: 1, delay: .9 }} className="h-full rounded-full" style={{ background: c as string }} />
                           </div>
-                          <span className={`text-[9px] font-medium ${t.done ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.title}</span>
                         </div>
                       ))}
                     </div>
@@ -413,8 +421,7 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
               </motion.div>
               <motion.div initial={{ opacity: 0, scale: 0, x: 20 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ delay: 1, type: 'spring', bounce: .4 }}
                 className="absolute -top-5 -right-5 bg-white rounded-2xl shadow-lg border border-gray-100 px-4 py-2.5 flex items-center gap-2">
-                <span className="text-xl">🎯</span>
-                <div><p className="text-xs font-bold text-gray-900">Level 5 Scholar</p><p className="text-[10px] text-gray-400">450 XP earned</p></div>
+                <span className="text-xl">🎯</span><div><p className="text-xs font-bold text-gray-900">Level 5 Scholar</p><p className="text-[10px] text-gray-400">450 XP earned</p></div>
               </motion.div>
               <motion.div initial={{ opacity: 0, scale: 0, x: -20 }} animate={{ opacity: 1, scale: 1, x: 0 }} transition={{ delay: 1.2, type: 'spring', bounce: .4 }}
                 className="absolute -bottom-5 -left-5 bg-white rounded-2xl shadow-lg border border-gray-100 px-4 py-2.5 flex items-center gap-2">
@@ -426,12 +433,12 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
         </div>
       </section>
 
-      {/* UNIVERSITIES STRIP */}
-      <div className="bg-gray-50 border-y border-gray-100 py-6 px-6 overflow-hidden">
+      {/* UNIVERSITIES */}
+      <div className="bg-gray-50 border-y border-gray-100 py-6 px-6">
         <p className="text-center text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Trusted by students from</p>
         <div className="flex items-center justify-center flex-wrap gap-6 md:gap-10">
           {['UNILAG', 'OAU', 'ABU', 'LASU', 'FUTA', 'UniAbuja', 'University of London', 'MIT'].map(u => (
-            <span key={u} className="text-sm font-bold text-gray-400 hover:text-purple-600 transition-colors cursor-default">{u}</span>
+            <span key={u} className="text-sm font-bold text-gray-400 hover:text-purple-600 transition-colors">{u}</span>
           ))}
         </div>
       </div>
@@ -442,20 +449,17 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
           <Reveal className="text-center mb-14">
             <span className="text-xs font-bold text-purple-600 tracking-widest uppercase bg-purple-50 border border-purple-100 px-4 py-2 rounded-full">How It Works</span>
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 mt-5 mb-3 tracking-tight">Get Started in Three Simple Steps</h2>
-            <p className="text-gray-400 max-w-md mx-auto">From sign-up to your first AI study plan in under 2 minutes.</p>
           </Reveal>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               { n: '01', icon: '📚', title: 'Add Your Subjects', desc: 'Enter your subjects, exam dates, and daily available hours. Done in 30 seconds.' },
-              { n: '02', icon: '🤖', title: 'AI Generates Plan', desc: 'AI calculates your optimal timetable — weighted by urgency, difficulty, and available time.' },
-              { n: '03', icon: '🚀', title: 'Track & Succeed', desc: 'Follow your plan, check tasks, earn badges and watch your exam readiness score climb.' },
+              { n: '02', icon: '🤖', title: 'AI Generates Plan', desc: 'AI calculates your optimal timetable — weighted by urgency, difficulty, and time.' },
+              { n: '03', icon: '🚀', title: 'Track & Succeed', desc: 'Follow your plan, check tasks, earn badges and watch your readiness score climb.' },
             ].map((step, i) => (
               <Reveal key={i} delay={i * .12}>
                 <motion.div whileHover={{ y: -6, boxShadow: '0 20px 40px rgba(124,58,237,.12)' }}
-                  className="bg-white border border-gray-100 rounded-2xl p-8 text-center shadow-sm transition-all duration-300 group">
-                  <motion.div whileHover={{ scale: 1.2, rotate: 5 }} className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100 flex items-center justify-center text-3xl mx-auto mb-5 transition-all">
-                    {step.icon}
-                  </motion.div>
+                  className="bg-white border border-gray-100 rounded-2xl p-8 text-center shadow-sm transition-all group">
+                  <motion.div whileHover={{ scale: 1.2, rotate: 5 }} className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100 flex items-center justify-center text-3xl mx-auto mb-5">{step.icon}</motion.div>
                   <p className="text-xs font-black text-purple-400 tracking-[.15em] mb-2">{step.n}</p>
                   <h3 className="font-bold text-gray-900 text-lg mb-3">{step.title}</h3>
                   <p className="text-gray-400 text-sm leading-relaxed">{step.desc}</p>
@@ -477,8 +481,8 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
             {FEATURES.map((f, i) => (
               <Reveal key={i} delay={i * .08}>
                 <motion.div whileHover={{ y: -6, boxShadow: '0 20px 40px rgba(124,58,237,.1)', borderColor: '#e9d5ff' }}
-                  className="bg-white border border-gray-100 rounded-2xl p-7 shadow-sm cursor-default group transition-all duration-300">
-                  <motion.div whileHover={{ scale: 1.15, rotate: -5 }} className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100 flex items-center justify-center text-2xl mb-5 transition-all">{f.icon}</motion.div>
+                  className="bg-white border border-gray-100 rounded-2xl p-7 shadow-sm group transition-all">
+                  <motion.div whileHover={{ scale: 1.15, rotate: -5 }} className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100 flex items-center justify-center text-2xl mb-5">{f.icon}</motion.div>
                   <h3 className="font-bold text-gray-900 text-lg mb-2">{f.title}</h3>
                   <p className="text-gray-400 text-sm leading-relaxed">{f.desc}</p>
                 </motion.div>
@@ -492,18 +496,8 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
       <section className="py-20 px-6" style={{ background: 'linear-gradient(135deg,#3b0764 0%,#7c3aed 55%,#9d174d 100%)' }}>
         <div className="max-w-4xl mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            {[
-              { val: 2400, suffix: '+', label: 'Active Students' },
-              { val: 15000, suffix: '+', label: 'Study Plans Generated' },
-              { val: 98, suffix: '%', label: 'Satisfaction Rate' },
-              { val: 40, suffix: '%', label: 'Grade Improvement' },
-            ].map((s, i) => (
-              <Reveal key={i} delay={i * .1}>
-                <div>
-                  <p className="font-black text-4xl text-white mb-2"><Counter to={s.val} suffix={s.suffix} /></p>
-                  <p className="text-purple-200 text-sm font-medium">{s.label}</p>
-                </div>
-              </Reveal>
+            {[{ val: 2400, suffix: '+', label: 'Active Students' }, { val: 15000, suffix: '+', label: 'Study Plans Generated' }, { val: 98, suffix: '%', label: 'Satisfaction Rate' }, { val: 40, suffix: '%', label: 'Grade Improvement' }].map((s, i) => (
+              <Reveal key={i} delay={i * .1}><div><p className="font-black text-4xl text-white mb-2"><Counter to={s.val} suffix={s.suffix} /></p><p className="text-purple-200 text-sm font-medium">{s.label}</p></div></Reveal>
             ))}
           </div>
         </div>
@@ -520,7 +514,7 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
             {TESTIMONIALS.map((t, i) => (
               <Reveal key={i} delay={i * .08}>
                 <motion.div whileHover={{ y: -6, boxShadow: '0 20px 48px rgba(124,58,237,.12)', borderColor: '#e9d5ff' }}
-                  className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm transition-all duration-300 flex flex-col h-full">
+                  className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm transition-all flex flex-col h-full">
                   <Stars n={t.rating} />
                   <p className="text-gray-600 text-sm leading-relaxed mt-4 mb-6 flex-1 italic">&ldquo;{t.text}&rdquo;</p>
                   <div className="flex items-center gap-3 pt-4 border-t border-gray-50">
@@ -541,7 +535,6 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
             <span className="text-xs font-bold text-purple-600 tracking-widest uppercase bg-purple-50 border border-purple-100 px-4 py-2 rounded-full">Pricing</span>
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 mt-5 mb-3 tracking-tight">Simple, Transparent Pricing</h2>
             <p className="text-gray-400 max-w-md mx-auto mb-6">Start free. No hidden fees. Upgrade when you need more.</p>
-            {/* Currency toggle */}
             <div className="inline-flex bg-white border border-gray-200 rounded-full p-1 gap-1 shadow-sm">
               <button onClick={() => setCurrency('usd')} className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${currency === 'usd' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-gray-600'}`}>🌍 USD $</button>
               <button onClick={() => setCurrency('ngn')} className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${currency === 'ngn' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-gray-600'}`}>🇳🇬 NGN ₦</button>
@@ -551,10 +544,7 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
             <Reveal delay={.1}>
               <motion.div whileHover={{ y: -4 }} className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm h-full flex flex-col transition-all">
                 <p className="text-gray-400 text-sm font-semibold mb-2">Student Plan</p>
-                <div className="flex items-baseline gap-1 mb-1">
-                  <span className="font-black text-4xl text-gray-900">{currency === 'usd' ? '$0' : '₦0'}</span>
-                  <span className="text-gray-400 text-sm">/month</span>
-                </div>
+                <div className="flex items-baseline gap-1 mb-1"><span className="font-black text-4xl text-gray-900">{currency === 'usd' ? '$0' : '₦0'}</span><span className="text-gray-400 text-sm">/month</span></div>
                 <p className="text-xs text-gray-400 mb-6">Free forever. No credit card.</p>
                 <ul className="space-y-3 mb-8 flex-1">
                   {['3 active subjects', 'Basic AI planning (3/month)', 'Focus timer', 'Task management', '7-day study history'].map(f => (
@@ -562,7 +552,7 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
                       <div className="w-4 h-4 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg></div>{f}
                     </li>
                   ))}
-                  {['Advanced analytics', 'Exam readiness score', 'Smart reminders'].map(f => (
+                  {['Advanced analytics', 'Exam readiness score', 'AI Study Buddy'].map(f => (
                     <li key={f} className="flex items-center gap-2.5 text-sm text-gray-300">
                       <div className="w-4 h-4 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0"><span className="text-[10px] text-gray-300">✕</span></div>{f}
                     </li>
@@ -582,11 +572,9 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
                     <span className="font-black text-4xl text-white">{currency === 'usd' ? '$8' : '₦9,000'}</span>
                     <span className="text-purple-200 text-sm">/month</span>
                   </div>
-                  <p className="text-xs text-purple-300 mb-6">
-                    {currency === 'usd' ? 'or $60/year (save $36)' : 'or ₦54,000/year (save ₦54,000)'}
-                  </p>
+                  <p className="text-xs text-purple-300 mb-6">{currency === 'usd' ? 'or $60/year (save $36)' : 'or ₦54,000/year (save ₦54,000)'}</p>
                   <ul className="space-y-3 mb-8 flex-1">
-                    {['Unlimited subjects', 'Full AI planning + insights', 'Exam readiness score', 'Advanced analytics', 'Smart reminders', 'Weekly AI report', 'Badges + XP system', 'Priority support'].map(f => (
+                    {['Unlimited subjects', 'Full AI planning + insights', 'Exam readiness score', 'Advanced analytics', 'Smart reminders', 'Weekly AI report', 'AI Study Buddy chat', 'Badges + XP system', 'Priority support'].map(f => (
                       <li key={f} className="flex items-center gap-2.5 text-sm text-purple-100">
                         <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg></div>{f}
                       </li>
@@ -600,7 +588,7 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
         </div>
       </section>
 
-      {/* FINAL CTA */}
+      {/* CTA */}
       <section className="py-20 px-6 relative overflow-hidden" style={{ background: 'linear-gradient(135deg,#1e0a3c 0%,#4c1d95 50%,#831843 100%)' }}>
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-purple-500/20 blur-[80px] pointer-events-none" />
         <div className="max-w-3xl mx-auto text-center relative z-10">
@@ -609,11 +597,8 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
             <p className="text-purple-200 text-lg mb-10">Join <Counter to={2400} />+ students already studying smarter with AI.</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Btn white onClick={() => setPage('signup')} className="px-8 py-4 text-base">Get Started Free →</Btn>
-              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .97 }}
-                onClick={() => setPage('pricing')}
-                className="px-8 py-4 border-2 border-white/30 hover:border-white/60 text-white font-semibold rounded-xl text-base transition-colors">
-                View Pricing
-              </motion.button>
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .97 }} onClick={() => setPage('pricing')}
+                className="px-8 py-4 border-2 border-white/30 hover:border-white/60 text-white font-semibold rounded-xl text-base transition-colors">View Pricing</motion.button>
             </div>
             <p className="text-purple-400 text-sm mt-6">No credit card · Free forever · Cancel anytime</p>
           </Reveal>
@@ -629,10 +614,8 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
               <p className="text-gray-400 text-sm leading-relaxed mt-4 mb-5">AI-powered study planning for students who want real results. Built by Coderift Studio.</p>
               <div className="flex gap-2">
                 {['𝕏', 'in', '📷', '💬'].map((s, i) => (
-                  <motion.a key={i} href="#" whileHover={{ scale: 1.1, background: '#f3e8ff' }}
-                    className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 text-xs font-bold hover:text-purple-600 transition-colors">
-                    {s}
-                  </motion.a>
+                  <motion.a key={i} href="#" whileHover={{ scale: 1.1 }}
+                    className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 text-xs font-bold hover:bg-purple-50 hover:text-purple-600 transition-colors">{s}</motion.a>
                 ))}
               </div>
             </div>
@@ -644,9 +627,7 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
               <div key={col.title}>
                 <h4 className="font-bold text-gray-900 text-sm mb-4">{col.title}</h4>
                 <ul className="space-y-3">
-                  {col.links.map(([l, p]) => (
-                    <li key={l}><button onClick={() => setPage(p as Page)} className="text-gray-400 text-sm hover:text-purple-600 transition-colors text-left">{l}</button></li>
-                  ))}
+                  {col.links.map(([l, p]) => <li key={l}><button onClick={() => setPage(p as Page)} className="text-gray-400 text-sm hover:text-purple-600 transition-colors text-left">{l}</button></li>)}
                 </ul>
               </div>
             ))}
@@ -658,12 +639,13 @@ function Landing({ setPage }: { setPage: (p: Page) => void }) {
         </div>
       </footer>
       <CookieBanner />
+      <ScrollToTop />
     </div>
   )
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   AUTH COMPONENTS
+   AUTH CARD WRAPPER
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function AuthCard({ children }: { children: React.ReactNode }) {
   return (
@@ -684,28 +666,13 @@ function AuthCard({ children }: { children: React.ReactNode }) {
   )
 }
 
-function SocialButtons({ setPage }: { setPage: (p: Page) => void }) {
-  return (
-    <>
-      <div className="flex items-center gap-3 my-5"><div className="flex-1 h-px bg-gray-100" /><span className="text-gray-400 text-xs">or continue with</span><div className="flex-1 h-px bg-gray-100" /></div>
-      <div className="grid grid-cols-2 gap-3">
-        <motion.button whileHover={{ scale: 1.02, borderColor: '#c084fc' }} whileTap={{ scale: .98 }}
-          className="flex items-center justify-center gap-2 border border-gray-200 rounded-xl py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 transition-all">
-          <GoogleIcon /> Google
-        </motion.button>
-        <motion.button whileHover={{ scale: 1.02, borderColor: '#c084fc' }} whileTap={{ scale: .98 }}
-          className="flex items-center justify-center gap-2 border border-gray-200 rounded-xl py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 transition-all">
-          <GitHubIcon /> GitHub
-        </motion.button>
-      </div>
-    </>
-  )
-}
-
-/* LOGIN */
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   LOGIN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function Login({ setPage }: { setPage: (p: Page) => void }) {
   const [f, setF] = useState({ email: '', password: '' })
   const [err, setErr] = useState<Record<string, string>>({})
+  const [apiError, setApiError] = useState('')
   const [loading, setLoading] = useState(false)
 
   function validate() {
@@ -713,13 +680,27 @@ function Login({ setPage }: { setPage: (p: Page) => void }) {
     if (!f.email) e.email = 'Email is required'
     else if (!/\S+@\S+\.\S+/.test(f.email)) e.email = 'Enter a valid email'
     if (!f.password) e.password = 'Password is required'
-    else if (f.password.length < 6) e.password = 'Minimum 6 characters'
     setErr(e); return !Object.keys(e).length
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); if (!validate()) return
-    setLoading(true); await new Promise(r => setTimeout(r, 1200)); setPage('dashboard')
+    setLoading(true); setApiError('')
+    try {
+      const data = await api('/api/auth/login', { method: 'POST', body: JSON.stringify(f) })
+      if (data.error) { setApiError(data.error); setLoading(false); return }
+      localStorage.setItem('sp_token', data.session?.access_token || '')
+      saveUser(data.user)
+      setPage('dashboard')
+    } catch { setApiError('Something went wrong. Please try again.'); setLoading(false) }
+  }
+
+  async function handleGoogle() {
+    try {
+      const data = await api('/api/auth/google', { method: 'POST' })
+      if (data.url) window.location.href = data.url
+      else setApiError('Google login failed. Please try again.')
+    } catch { setApiError('Google login failed. Please try again.') }
   }
 
   return (
@@ -730,34 +711,47 @@ function Login({ setPage }: { setPage: (p: Page) => void }) {
         <h1 className="text-2xl font-black text-gray-900 tracking-tight">Welcome Back 👋</h1>
         <p className="text-gray-400 text-sm mt-1.5">Sign in to continue your study journey.</p>
       </div>
+      {apiError && <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-red-500 text-sm">⚠ {apiError}</div>}
       <form onSubmit={submit} className="space-y-4">
-        {[{ key: 'email', label: 'Email Address', type: 'email', ph: 'you@email.com' }, { key: 'password', label: 'Password', type: 'password', ph: 'Enter your password' }].map(field => (
+        {[{ key: 'email', label: 'Email Address', type: 'email', ph: 'you@email.com' }, { key: 'password', label: 'Password', type: 'password', ph: 'Your password' }].map(field => (
           <div key={field.key}>
             <div className="flex justify-between items-center mb-1.5">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">{field.label}</label>
               {field.key === 'password' && <button type="button" onClick={() => setPage('forgot')} className="text-xs text-purple-600 font-semibold hover:text-purple-700">Forgot password?</button>}
             </div>
-            <input type={field.type} placeholder={field.ph} value={(f as any)[field.key]}
-              onChange={e => setF({ ...f, [field.key]: e.target.value })}
+            <input type={field.type} placeholder={field.ph} value={(f as any)[field.key]} onChange={e => setF({ ...f, [field.key]: e.target.value })}
               className={`w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all placeholder:text-gray-300 ${(err as any)[field.key] ? 'border-red-300 bg-red-50/50' : 'border-gray-200 bg-gray-50 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-100'}`} />
             {(err as any)[field.key] && <p className="text-red-500 text-xs mt-1">⚠ {(err as any)[field.key]}</p>}
           </div>
         ))}
         <motion.button type="submit" whileHover={{ scale: 1.01 }} whileTap={{ scale: .98 }} disabled={loading}
           className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold py-3.5 rounded-xl text-sm shadow-lg shadow-purple-200 disabled:opacity-60 flex items-center justify-center gap-2 mt-1">
-          {loading ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Signing in...</> : 'Sign In →'}
+          {loading ? <><Spinner />Signing in...</> : 'Sign In →'}
         </motion.button>
       </form>
-      <SocialButtons setPage={setPage} />
+      <div className="flex items-center gap-3 my-5"><div className="flex-1 h-px bg-gray-100" /><span className="text-gray-400 text-xs">or continue with</span><div className="flex-1 h-px bg-gray-100" /></div>
+      <div className="grid grid-cols-2 gap-3">
+        <motion.button whileHover={{ scale: 1.02, borderColor: '#c084fc' }} whileTap={{ scale: .98 }} onClick={handleGoogle}
+          className="flex items-center justify-center gap-2 border border-gray-200 rounded-xl py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 transition-all">
+          <GoogleIcon /> Google
+        </motion.button>
+        <motion.button whileHover={{ scale: 1.02, borderColor: '#c084fc' }} whileTap={{ scale: .98 }}
+          className="flex items-center justify-center gap-2 border border-gray-200 rounded-xl py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 transition-all">
+          <GitHubIcon /> GitHub
+        </motion.button>
+      </div>
       <p className="text-center text-gray-400 text-sm mt-4">No account?{' '}<button onClick={() => setPage('signup')} className="text-purple-600 font-bold hover:text-purple-700">Create one free →</button></p>
     </AuthCard>
   )
 }
 
-/* SIGNUP */
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   SIGNUP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function Signup({ setPage }: { setPage: (p: Page) => void }) {
   const [f, setF] = useState({ name: '', email: '', password: '', confirm: '' })
   const [err, setErr] = useState<Record<string, string>>({})
+  const [apiError, setApiError] = useState('')
   const [loading, setLoading] = useState(false)
   const str = f.password.length === 0 ? 0 : f.password.length < 6 ? 1 : f.password.length < 10 ? 2 : 3
 
@@ -774,7 +768,22 @@ function Signup({ setPage }: { setPage: (p: Page) => void }) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); if (!validate()) return
-    setLoading(true); await new Promise(r => setTimeout(r, 1400)); setPage('dashboard')
+    setLoading(true); setApiError('')
+    try {
+      const data = await api('/api/auth/signup', { method: 'POST', body: JSON.stringify({ name: f.name, email: f.email, password: f.password }) })
+      if (data.error) { setApiError(data.error); setLoading(false); return }
+      localStorage.setItem('sp_token', data.session?.access_token || '')
+      saveUser(data.user)
+      setPage('dashboard')
+    } catch { setApiError('Something went wrong. Please try again.'); setLoading(false) }
+  }
+
+  async function handleGoogle() {
+    try {
+      const data = await api('/api/auth/google', { method: 'POST' })
+      if (data.url) window.location.href = data.url
+      else setApiError('Google login failed. Please try again.')
+    } catch { setApiError('Google login failed. Please try again.') }
   }
 
   return (
@@ -785,26 +794,23 @@ function Signup({ setPage }: { setPage: (p: Page) => void }) {
         <h1 className="text-2xl font-black text-gray-900 tracking-tight">Create Account 🚀</h1>
         <p className="text-gray-400 text-sm mt-1.5">Start your AI study journey free — no card needed.</p>
       </div>
+      {apiError && <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-red-500 text-sm">⚠ {apiError}</div>}
       <form onSubmit={submit} className="space-y-4">
-        {[{ key: 'name', label: 'Full Name', type: 'text', ph: 'Amaka Johnson' }, { key: 'email', label: 'Email Address', type: 'email', ph: 'you@email.com' }].map(field => (
+        {[{ key: 'name', label: 'Full Name', type: 'text', ph: 'Your full name' }, { key: 'email', label: 'Email Address', type: 'email', ph: 'you@email.com' }].map(field => (
           <div key={field.key}>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{field.label}</label>
-            <input type={field.type} placeholder={field.ph} value={(f as any)[field.key]}
-              onChange={e => setF({ ...f, [field.key]: e.target.value })}
+            <input type={field.type} placeholder={field.ph} value={(f as any)[field.key]} onChange={e => setF({ ...f, [field.key]: e.target.value })}
               className={`w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all placeholder:text-gray-300 ${(err as any)[field.key] ? 'border-red-300 bg-red-50/50' : 'border-gray-200 bg-gray-50 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-100'}`} />
             {(err as any)[field.key] && <p className="text-red-500 text-xs mt-1">⚠ {(err as any)[field.key]}</p>}
           </div>
         ))}
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Password</label>
-          <input type="password" placeholder="Create a strong password" value={f.password}
-            onChange={e => setF({ ...f, password: e.target.value })}
+          <input type="password" placeholder="Create a strong password" value={f.password} onChange={e => setF({ ...f, password: e.target.value })}
             className={`w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all placeholder:text-gray-300 ${err.password ? 'border-red-300 bg-red-50/50' : 'border-gray-200 bg-gray-50 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-100'}`} />
           {f.password && (
             <div className="mt-2 space-y-1">
-              <div className="flex gap-1">
-                {[1, 2, 3].map(i => <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= str ? (str === 1 ? 'bg-red-400' : str === 2 ? 'bg-amber-400' : 'bg-green-500') : 'bg-gray-200'}`} />)}
-              </div>
+              <div className="flex gap-1">{[1, 2, 3].map(i => <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= str ? (str === 1 ? 'bg-red-400' : str === 2 ? 'bg-amber-400' : 'bg-green-500') : 'bg-gray-200'}`} />)}</div>
               <p className={`text-xs ${str === 1 ? 'text-red-400' : str === 2 ? 'text-amber-400' : 'text-green-500'}`}>{['', 'Weak', 'Good', 'Strong'][str]} password</p>
             </div>
           )}
@@ -812,24 +818,35 @@ function Signup({ setPage }: { setPage: (p: Page) => void }) {
         </div>
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Confirm Password</label>
-          <input type="password" placeholder="Repeat your password" value={f.confirm}
-            onChange={e => setF({ ...f, confirm: e.target.value })}
+          <input type="password" placeholder="Repeat your password" value={f.confirm} onChange={e => setF({ ...f, confirm: e.target.value })}
             className={`w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all placeholder:text-gray-300 ${err.confirm ? 'border-red-300 bg-red-50/50' : 'border-gray-200 bg-gray-50 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-100'}`} />
           {err.confirm && <p className="text-red-500 text-xs mt-1">⚠ {err.confirm}</p>}
         </div>
         <motion.button type="submit" whileHover={{ scale: 1.01 }} whileTap={{ scale: .98 }} disabled={loading}
           className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold py-3.5 rounded-xl text-sm shadow-lg shadow-purple-200 disabled:opacity-60 flex items-center justify-center gap-2 mt-1">
-          {loading ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Creating account...</> : 'Create Account →'}
+          {loading ? <><Spinner />Creating account...</> : 'Create Account →'}
         </motion.button>
       </form>
-      <SocialButtons setPage={setPage} />
+      <div className="flex items-center gap-3 my-5"><div className="flex-1 h-px bg-gray-100" /><span className="text-gray-400 text-xs">or continue with</span><div className="flex-1 h-px bg-gray-100" /></div>
+      <div className="grid grid-cols-2 gap-3">
+        <motion.button whileHover={{ scale: 1.02, borderColor: '#c084fc' }} whileTap={{ scale: .98 }} onClick={handleGoogle}
+          className="flex items-center justify-center gap-2 border border-gray-200 rounded-xl py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 transition-all">
+          <GoogleIcon /> Google
+        </motion.button>
+        <motion.button whileHover={{ scale: 1.02, borderColor: '#c084fc' }} whileTap={{ scale: .98 }}
+          className="flex items-center justify-center gap-2 border border-gray-200 rounded-xl py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 transition-all">
+          <GitHubIcon /> GitHub
+        </motion.button>
+      </div>
       <p className="text-center text-gray-300 text-xs mt-4">By signing up you agree to our <button onClick={() => setPage('terms')} className="text-purple-600">Terms</button> & <button onClick={() => setPage('privacy')} className="text-purple-600">Privacy Policy</button></p>
       <p className="text-center text-gray-400 text-sm mt-3">Already have an account?{' '}<button onClick={() => setPage('login')} className="text-purple-600 font-bold hover:text-purple-700">Sign in →</button></p>
     </AuthCard>
   )
 }
 
-/* FORGOT PASSWORD */
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   FORGOT PASSWORD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function ForgotPassword({ setPage }: { setPage: (p: Page) => void }) {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
@@ -840,7 +857,13 @@ function ForgotPassword({ setPage }: { setPage: (p: Page) => void }) {
     e.preventDefault()
     if (!email) { setError('Please enter your email'); return }
     if (!/\S+@\S+\.\S+/.test(email)) { setError('Enter a valid email address'); return }
-    setLoading(true); await new Promise(r => setTimeout(r, 1400)); setLoading(false); setSent(true)
+    setLoading(true)
+    try {
+      const data = await api('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) })
+      if (data.error) { setError(data.error); setLoading(false); return }
+      setSent(true)
+    } catch { setError('Something went wrong. Please try again.') }
+    setLoading(false)
   }
 
   return (
@@ -853,22 +876,21 @@ function ForgotPassword({ setPage }: { setPage: (p: Page) => void }) {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M22 7l-10 7L2 7" /></svg>
             </div>
             <h1 className="text-2xl font-black text-gray-900 tracking-tight">Forgot password? 🔑</h1>
-            <p className="text-gray-400 text-sm mt-1.5">No worries. Enter your email and we'll send a reset link.</p>
+            <p className="text-gray-400 text-sm mt-1.5">Enter your email and we'll send a reset link.</p>
           </div>
           {error && <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-red-500 text-sm">⚠ {error}</div>}
           <form onSubmit={submit} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email Address</label>
-              <input type="email" placeholder="you@email.com" value={email}
-                onChange={e => { setEmail(e.target.value); setError('') }}
+              <input type="email" placeholder="you@email.com" value={email} onChange={e => { setEmail(e.target.value); setError('') }}
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-100 transition-all placeholder:text-gray-300" />
             </div>
             <motion.button type="submit" whileHover={{ scale: 1.01 }} whileTap={{ scale: .98 }} disabled={loading}
               className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold py-3.5 rounded-xl text-sm shadow-lg shadow-purple-200 disabled:opacity-60 flex items-center justify-center gap-2">
-              {loading ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Sending...</> : 'Send Reset Link →'}
+              {loading ? <><Spinner />Sending...</> : 'Send Reset Link →'}
             </motion.button>
           </form>
-          <p className="text-center text-gray-400 text-sm mt-6">Remember your password?{' '}<button onClick={() => setPage('login')} className="text-purple-600 font-bold hover:text-purple-700">Sign in →</button></p>
+          <p className="text-center text-gray-400 text-sm mt-6">Remember your password?{' '}<button onClick={() => setPage('login')} className="text-purple-600 font-bold">Sign in →</button></p>
         </>
       ) : (
         <motion.div initial={{ opacity: 0, scale: .95 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-4">
@@ -887,9 +909,17 @@ function ForgotPassword({ setPage }: { setPage: (p: Page) => void }) {
   )
 }
 
-/* LOGOUT */
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   LOGOUT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function LogoutPage({ setPage }: { setPage: (p: Page) => void }) {
-  useEffect(() => { const t = setTimeout(() => setPage('home'), 2500); return () => clearTimeout(t) }, [setPage])
+  useEffect(() => {
+    api('/api/auth/logout', { method: 'POST' }).catch(console.error)
+    clearAuth()
+    const t = setTimeout(() => setPage('home'), 2500)
+    return () => clearTimeout(t)
+  }, [setPage])
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-6">
       <motion.div initial={{ opacity: 0, y: 24, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: .5 }} className="text-center">
@@ -910,36 +940,50 @@ function LogoutPage({ setPage }: { setPage: (p: Page) => void }) {
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ONBOARDING
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-function Onboarding({ onComplete }: { onComplete: () => void }) {
+function Onboarding({ user, onComplete }: { user: User; onComplete: () => void }) {
   const [step, setStep] = useState(0)
   const [data, setData] = useState({ university: '', course: '', level: '', subjects: [''], hours: '3', examDate: '' })
+  const [loading, setLoading] = useState(false)
 
   const steps = [
-    { title: 'Welcome to StudyPilot! 🎉', subtitle: 'Let\'s set up your personalized study experience in 4 quick steps.' },
+    { title: `Welcome to StudyPilot, ${user.name}! 🎉`, subtitle: 'Let\'s set up your personalized study experience in 4 quick steps.' },
     { title: 'Tell us about yourself 🎓', subtitle: 'This helps us personalize your dashboard.' },
     { title: 'Add your subjects 📚', subtitle: 'What are you currently studying?' },
     { title: 'Almost done! ⏰', subtitle: 'How much time can you study daily?' },
   ]
+
+  async function complete() {
+    setLoading(true)
+    try {
+      await api('/api/profile', { method: 'PATCH', body: JSON.stringify({ university: data.university, course: data.course, level: data.level, onboarded: true }) })
+      if (data.subjects.filter(s => s.trim()).length > 0) {
+        for (const subject of data.subjects.filter(s => s.trim())) {
+          await api('/api/subjects', { method: 'POST', body: JSON.stringify({ name: subject, color: COLORS[data.subjects.indexOf(subject) % COLORS.length] }) })
+        }
+      }
+      if (data.subjects.filter(s => s.trim()).length > 0) {
+        await api('/api/study-plans', { method: 'POST', body: JSON.stringify({ subjects: data.subjects.filter(s => s.trim()), hours_per_day: Number(data.hours) }) })
+      }
+    } catch (e) { console.error(e) }
+    setLoading(false)
+    onComplete()
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-6">
       <motion.div initial={{ opacity: 0, scale: .95 }} animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
         <div className="h-1 bg-gray-100">
-          <motion.div className="h-full bg-gradient-to-r from-purple-600 to-pink-500 rounded-full"
-            animate={{ width: `${((step + 1) / steps.length) * 100}%` }} transition={{ duration: .4 }} />
+          <motion.div className="h-full bg-gradient-to-r from-purple-600 to-pink-500 rounded-full" animate={{ width: `${((step + 1) / steps.length) * 100}%` }} transition={{ duration: .4 }} />
         </div>
         <div className="p-8">
           <div className="flex gap-2 mb-6">
-            {steps.map((_, i) => (
-              <div key={i} className={`flex-1 h-1.5 rounded-full transition-all ${i <= step ? 'bg-purple-600' : 'bg-gray-100'}`} />
-            ))}
+            {steps.map((_, i) => <div key={i} className={`flex-1 h-1.5 rounded-full transition-all ${i <= step ? 'bg-purple-600' : 'bg-gray-100'}`} />)}
           </div>
           <AnimatePresence mode="wait">
             <motion.div key={step} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: .3 }}>
               <h2 className="text-2xl font-black text-gray-900 mb-2">{steps[step].title}</h2>
               <p className="text-gray-400 text-sm mb-8">{steps[step].subtitle}</p>
-
               {step === 0 && (
                 <div className="space-y-4">
                   {[['🤖', 'AI Study Plans', 'Get personalized timetables'], ['🎯', 'Exam Readiness', 'Track how ready you are'], ['🔥', 'Streak System', 'Stay consistent with streaks'], ['🏆', 'Earn Badges', 'Get rewarded for studying']].map(([icon, title, desc]) => (
@@ -950,7 +994,6 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
                   ))}
                 </div>
               )}
-
               {step === 1 && (
                 <div className="space-y-4">
                   <div><label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">University</label>
@@ -967,7 +1010,6 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
                     </select></div>
                 </div>
               )}
-
               {step === 2 && (
                 <div className="space-y-3">
                   {data.subjects.map((s, i) => (
@@ -983,36 +1025,27 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
                   ))}
                   {data.subjects.length < 8 && (
                     <button onClick={() => setData({ ...data, subjects: [...data.subjects, ''] })}
-                      className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-purple-300 hover:text-purple-500 transition-all">
-                      + Add subject
-                    </button>
+                      className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-purple-300 hover:text-purple-500 transition-all">+ Add subject</button>
                   )}
                 </div>
               )}
-
               {step === 3 && (
                 <div className="space-y-4">
-                  <div><label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Hours available to study per day</label>
+                  <div><label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Hours available to study per day</label>
                     <div className="grid grid-cols-4 gap-2">
                       {['1', '2', '3', '4', '5', '6', '7', '8+'].map(h => (
                         <button key={h} onClick={() => setData({ ...data, hours: h })}
-                          className={`py-3 rounded-xl text-sm font-bold border-2 transition-all ${data.hours === h ? 'border-purple-600 bg-purple-50 text-purple-600' : 'border-gray-200 text-gray-400 hover:border-purple-300'}`}>
-                          {h}h
-                        </button>
+                          className={`py-3 rounded-xl text-sm font-bold border-2 transition-all ${data.hours === h ? 'border-purple-600 bg-purple-50 text-purple-600' : 'border-gray-200 text-gray-400 hover:border-purple-300'}`}>{h}h</button>
                       ))}
                     </div></div>
-                  <div><label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Next exam date (optional)</label>
-                    <input type="date" value={data.examDate} onChange={e => setData({ ...data, examDate: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-100 transition-all" /></div>
                 </div>
               )}
             </motion.div>
           </AnimatePresence>
-
           <div className="flex gap-3 mt-8">
             {step > 0 && <Btn outline onClick={() => setStep(step - 1)} className="flex-1">← Back</Btn>}
-            <Btn onClick={() => step < steps.length - 1 ? setStep(step + 1) : onComplete()} className="flex-1">
-              {step === steps.length - 1 ? '🚀 Generate My Plan!' : 'Continue →'}
+            <Btn onClick={() => step < steps.length - 1 ? setStep(step + 1) : complete()} className="flex-1" disabled={loading}>
+              {loading ? <><Spinner />Setting up...</> : step === steps.length - 1 ? '🚀 Launch Dashboard!' : 'Continue →'}
             </Btn>
           </div>
         </div>
@@ -1025,30 +1058,67 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
    DASHBOARD
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function Dashboard({ setPage }: { setPage: (p: Page) => void }) {
+  const [user, setUser] = useState<User | null>(getUser())
   const [tab, setTab] = useState<DashTab>('overview')
-  const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS)
-  const [notes, setNotes] = useState<Note[]>(MOCK_NOTES)
-  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS)
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [exams, setExams] = useState<Exam[]>([])
+  const [notes, setNotes] = useState<Note[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [badges, setBadges] = useState<string[]>([])
   const [mobSidebar, setMobSidebar] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [showOnboarding, setShowOnboarding] = useState(false)
   const [confetti, setConfetti] = useState(false)
-  const [darkMode, setDarkMode] = useState(false)
-  const [xp, setXp] = useState(450)
-  const [streak, setStreak] = useState(9)
-  const xpData = getXPLevel(xp)
+  const [darkMode, setDarkMode] = useState(user?.dark_mode || false)
+  const xpData = getXPLevel(user?.xp || 0)
   const unreadCount = notifications.filter(n => !n.read).length
 
-  useEffect(() => { const t = setTimeout(() => setLoading(false), 900); return () => clearTimeout(t) }, [])
+  useEffect(() => {
+    if (!user) { setPage('login'); return }
+    loadData()
+  }, [])
 
-  function toggleTask(id: string) {
-    setTasks(p => {
-      const updated = p.map(t => t.id === id ? { ...t, done: !t.done } : t)
-      const wasCompleted = updated.find(t => t.id === id)?.done
-      if (wasCompleted) { setXp(x => x + 10); setConfetti(true); setTimeout(() => setConfetti(false), 3000) }
-      return updated
-    })
+  async function loadData() {
+    setLoading(true)
+    try {
+      const [tasksRes, examsRes, notifRes, badgesRes] = await Promise.all([
+        api('/api/tasks'),
+        api('/api/exams'),
+        api('/api/notifications'),
+        api('/api/badges'),
+      ])
+      if (tasksRes.tasks) setTasks(tasksRes.tasks)
+      if (examsRes.exams) setExams(examsRes.exams)
+      if (notifRes.notifications) setNotifications(notifRes.notifications)
+      if (badgesRes.badges) setBadges(badgesRes.badges.map((b: any) => b.badge_id))
+    } catch (e) { console.error(e) }
+    setLoading(false)
   }
+
+  async function refreshUser() {
+    const data = await api('/api/profile')
+    if (data.user) { setUser(data.user); saveUser(data.user) }
+  }
+
+  async function toggleTask(id: string) {
+    const task = tasks.find(t => t.id === id)
+    if (!task) return
+    const data = await api('/api/tasks', { method: 'PATCH', body: JSON.stringify({ id, done: !task.done }) })
+    if (data.task) {
+      setTasks(p => p.map(t => t.id === id ? data.task : t))
+      if (data.task.done) {
+        setConfetti(true); setTimeout(() => setConfetti(false), 3000)
+        refreshUser()
+      }
+    }
+  }
+
+  if (!user) return null
+  if (!user.onboarded) return <Onboarding user={user} onComplete={() => { refreshUser(); loadData() }} />
+
+  const bg = darkMode ? 'bg-gray-950' : 'bg-gray-50'
+  const cardBg = darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
+  const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
+  const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
 
   const nav = [
     { id: 'overview', icon: '⊞', label: 'Overview' },
@@ -1062,72 +1132,49 @@ function Dashboard({ setPage }: { setPage: (p: Page) => void }) {
     { id: 'badges', icon: '🏆', label: 'Badges' },
   ]
 
-  const bottomNav = [
-    { id: 'overview', icon: '⊞', label: 'Home' },
-    { id: 'calendar', icon: '📅', label: 'Calendar' },
-    { id: 'focus', icon: '⏱️', label: 'Focus' },
-    { id: 'tasks', icon: '✓', label: 'Tasks' },
-    { id: 'profile', icon: '👤', label: 'Profile' },
-  ]
-
-  const bg = darkMode ? 'bg-gray-950' : 'bg-gray-50'
-  const cardBg = darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
-  const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
-  const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
-
   const SidebarContent = () => (
     <div className={`flex flex-col h-full border-r w-60 ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
       <div className={`p-5 border-b ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
         <Logo onClick={() => setPage('home')} dark={darkMode} />
       </div>
-
       {/* XP Bar */}
       <div className={`mx-4 mt-4 p-3 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-purple-50'}`}>
         <div className="flex items-center justify-between mb-1.5">
           <span className={`text-xs font-bold ${darkMode ? 'text-purple-300' : 'text-purple-600'}`}>Level {xpData.level} {xpData.title}</span>
-          <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>{xp} XP</span>
+          <span className={`text-xs ${textSecondary}`}>{user.xp} XP</span>
         </div>
         <div className={`h-1.5 rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-purple-100'}`}>
           <motion.div animate={{ width: `${xpData.progress}%` }} className="h-full bg-gradient-to-r from-purple-600 to-pink-500 rounded-full" transition={{ duration: .8 }} />
         </div>
         <p className={`text-[10px] mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{100 - xpData.progress} XP to next level</p>
       </div>
-
       <nav className="flex-1 p-4 space-y-0.5 overflow-y-auto">
         {nav.map(item => (
           <button key={item.id} onClick={() => { setTab(item.id as DashTab); setMobSidebar(false) }}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${tab === item.id
-                ? darkMode ? 'bg-purple-900/50 text-purple-300 border border-purple-800' : 'bg-purple-50 text-purple-700 border border-purple-100'
-                : darkMode ? 'text-gray-400 hover:bg-gray-800 hover:text-white' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-              }`}>
-            <span>{item.icon}</span>
-            {item.label}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${tab === item.id ? (darkMode ? 'bg-purple-900/50 text-purple-300 border border-purple-800' : 'bg-purple-50 text-purple-700 border border-purple-100') : (darkMode ? 'text-gray-400 hover:bg-gray-800 hover:text-white' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900')}`}>
+            <span>{item.icon}</span>{item.label}
             {tab === item.id && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-600" />}
           </button>
         ))}
         <div className={`my-2 h-px ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`} />
         {[{ id: 'profile', icon: '👤', label: 'Profile' }, { id: 'settings', icon: '⚙️', label: 'Settings' }].map(item => (
           <button key={item.id} onClick={() => { setTab(item.id as DashTab); setMobSidebar(false) }}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${tab === item.id
-                ? darkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-50 text-purple-700'
-                : darkMode ? 'text-gray-400 hover:bg-gray-800 hover:text-white' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-              }`}>
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${tab === item.id ? (darkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-50 text-purple-700') : (darkMode ? 'text-gray-400 hover:bg-gray-800 hover:text-white' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900')}`}>
             <span>{item.icon}</span>{item.label}
           </button>
         ))}
       </nav>
-
       <div className={`p-4 border-t ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-        <div className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors mb-1 ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}`}
-          onClick={() => setTab('profile')}>
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AJ</div>
+        <div className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors mb-1 ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}`} onClick={() => setTab('profile')}>
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+            {user.name.charAt(0).toUpperCase()}
+          </div>
           <div className="flex-1 min-w-0">
-            <p className={`text-sm font-bold truncate ${textPrimary}`}>Amaka Johnson</p>
-            <p className="text-xs text-purple-500 font-medium">✨ Pro Plan · {streak}🔥</p>
+            <p className={`text-sm font-bold truncate ${textPrimary}`}>{user.name}</p>
+            <p className="text-xs text-purple-500 font-medium">{user.plan === 'pro' ? '✨ Pro Plan' : 'Free Plan'} · {user.streak}🔥</p>
           </div>
         </div>
-        <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: .97 }}
-          onClick={() => setPage('logout')}
+        <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: .97 }} onClick={() => setPage('logout')}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-400 hover:bg-red-50 hover:text-red-500 transition-all">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
@@ -1141,18 +1188,12 @@ function Dashboard({ setPage }: { setPage: (p: Page) => void }) {
   return (
     <div className={`flex h-screen overflow-hidden ${bg}`}>
       <Confetti active={confetti} />
-
-      {/* Desktop sidebar */}
       <div className="hidden lg:flex h-full"><SidebarContent /></div>
-
-      {/* Mobile sidebar */}
       <AnimatePresence>
         {mobSidebar && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setMobSidebar(false)} className="lg:hidden fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" />
-            <motion.div initial={{ x: -260 }} animate={{ x: 0 }} exit={{ x: -260 }} transition={{ type: 'spring', damping: 24 }}
-              className="lg:hidden fixed left-0 top-0 bottom-0 z-50 shadow-2xl">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setMobSidebar(false)} className="lg:hidden fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" />
+            <motion.div initial={{ x: -260 }} animate={{ x: 0 }} exit={{ x: -260 }} transition={{ type: 'spring', damping: 24 }} className="lg:hidden fixed left-0 top-0 bottom-0 z-50 shadow-2xl">
               <SidebarContent />
             </motion.div>
           </>
@@ -1166,24 +1207,18 @@ function Dashboard({ setPage }: { setPage: (p: Page) => void }) {
             <button onClick={() => setMobSidebar(true)} className={`lg:hidden p-2 rounded-xl transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>☰</button>
             <div>
               <h1 className={`font-black text-lg tracking-tight ${textPrimary}`}>{nav.find(n => n.id === tab)?.label || 'Dashboard'}</h1>
-              <p className={`text-xs mt-0.5 ${textSecondary}`}>{getGreeting('Amaka')}</p>
+              <p className={`text-xs mt-0.5 ${textSecondary}`}>{getGreeting(user.name)}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Dark mode */}
-            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }}
-              onClick={() => setDarkMode(!darkMode)}
+            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => setDarkMode(!darkMode)}
               className={`p-2.5 rounded-xl transition-colors ${darkMode ? 'bg-gray-800 text-yellow-400' : 'hover:bg-gray-100 text-gray-400'}`}>
               {darkMode ? '☀️' : '🌙'}
             </motion.button>
-            {/* Notifications */}
-            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }}
-              onClick={() => setTab('notifications')}
+            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => setTab('notifications')}
               className={`relative p-2.5 rounded-xl transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-400'}`}>
               🔔
-              {unreadCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-red-500 border-2 border-white flex items-center justify-center text-[9px] font-bold text-white">{unreadCount}</span>
-              )}
+              {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-red-500 border-2 border-white flex items-center justify-center text-[9px] font-bold text-white">{unreadCount}</span>}
             </motion.button>
             <Btn onClick={() => setTab('planner')} sm>+ New Plan</Btn>
           </div>
@@ -1193,17 +1228,17 @@ function Dashboard({ setPage }: { setPage: (p: Page) => void }) {
         <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 lg:pb-6">
           <AnimatePresence mode="wait">
             <motion.div key={tab} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }} transition={{ duration: .25 }}>
-              {tab === 'overview' && <OverviewTab tasks={tasks} toggleTask={toggleTask} setTab={setTab} loading={loading} darkMode={darkMode} xp={xp} streak={streak} />}
-              {tab === 'planner' && <PlannerTab darkMode={darkMode} />}
+              {tab === 'overview' && <OverviewTab user={user} tasks={tasks} exams={exams} toggleTask={toggleTask} setTab={setTab} loading={loading} darkMode={darkMode} />}
+              {tab === 'planner' && <PlannerTab user={user} darkMode={darkMode} onPlanGenerated={loadData} />}
               {tab === 'calendar' && <CalendarTab darkMode={darkMode} />}
-              {tab === 'focus' && <FocusTab darkMode={darkMode} />}
-              {tab === 'tasks' && <TasksTab tasks={tasks} setTasks={setTasks} toggleTask={toggleTask} darkMode={darkMode} />}
+              {tab === 'focus' && <FocusTab darkMode={darkMode} onSessionComplete={refreshUser} />}
+              {tab === 'tasks' && <TasksTab tasks={tasks} setTasks={setTasks} toggleTask={toggleTask} darkMode={darkMode} onAdd={loadData} />}
               {tab === 'analytics' && <AnalyticsTab darkMode={darkMode} />}
               {tab === 'notes' && <NotesTab notes={notes} setNotes={setNotes} darkMode={darkMode} />}
-              {tab === 'ai-buddy' && <AIBuddyTab darkMode={darkMode} />}
-              {tab === 'badges' && <BadgesTab darkMode={darkMode} />}
-              {tab === 'profile' && <ProfileTab darkMode={darkMode} setPage={setPage} />}
-              {tab === 'settings' && <SettingsTab darkMode={darkMode} setDarkMode={setDarkMode} />}
+              {tab === 'ai-buddy' && <AIBuddyTab user={user} darkMode={darkMode} />}
+              {tab === 'badges' && <BadgesTab earnedIds={badges} darkMode={darkMode} />}
+              {tab === 'profile' && <ProfileTab user={user} setUser={setUser} darkMode={darkMode} setPage={setPage} />}
+              {tab === 'settings' && <SettingsTab user={user} darkMode={darkMode} setDarkMode={setDarkMode} />}
               {tab === 'notifications' && <NotificationsTab notifications={notifications} setNotifications={setNotifications} darkMode={darkMode} />}
             </motion.div>
           </AnimatePresence>
@@ -1212,7 +1247,7 @@ function Dashboard({ setPage }: { setPage: (p: Page) => void }) {
         {/* Mobile bottom nav */}
         <div className={`lg:hidden fixed bottom-0 left-0 right-0 border-t px-2 py-2 z-30 ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
           <div className="flex items-center justify-around">
-            {bottomNav.map(item => (
+            {[{ id: 'overview', icon: '⊞', label: 'Home' }, { id: 'calendar', icon: '📅', label: 'Calendar' }, { id: 'focus', icon: '⏱️', label: 'Focus' }, { id: 'tasks', icon: '✓', label: 'Tasks' }, { id: 'profile', icon: '👤', label: 'Profile' }].map(item => (
               <button key={item.id} onClick={() => setTab(item.id as DashTab)}
                 className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all ${tab === item.id ? 'text-purple-600' : 'text-gray-400'}`}>
                 <span className="text-lg">{item.icon}</span>
@@ -1223,37 +1258,38 @@ function Dashboard({ setPage }: { setPage: (p: Page) => void }) {
           </div>
         </div>
       </div>
-
-      {/* Onboarding */}
-      {showOnboarding && <div className="fixed inset-0 z-50"><Onboarding onComplete={() => setShowOnboarding(false)} /></div>}
     </div>
   )
 }
 
 /* ── OVERVIEW TAB ── */
-function OverviewTab({ tasks, toggleTask, setTab, loading, darkMode, xp, streak }: any) {
+function OverviewTab({ user, tasks, exams, toggleTask, setTab, loading, darkMode }: any) {
   const cardBg = darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
   const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
   const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
-  const tip = STUDY_TIPS[Math.floor(Math.random() * STUDY_TIPS.length)]
+  const tip = STUDY_TIPS[new Date().getDay() % STUDY_TIPS.length]
+  const todayTasks = tasks.filter((t: Task) => !t.done)
+  const doneTasks = tasks.filter((t: Task) => t.done)
 
   return (
     <div className="max-w-5xl mx-auto space-y-5">
-      {/* Greeting */}
+      {/* Greeting banner */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
         className={`p-5 rounded-2xl border ${darkMode ? 'bg-gradient-to-r from-purple-900/50 to-pink-900/30 border-purple-800' : 'bg-gradient-to-r from-purple-50 to-pink-50 border-purple-100'}`}>
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h2 className={`font-black text-xl ${textPrimary}`}>{getGreeting('Amaka')} 👋</h2>
-            <p className={`text-sm mt-1 ${textSecondary}`}>You have {tasks.filter((t: Task) => !t.done).length} tasks remaining today. Keep pushing!</p>
+            <h2 className={`font-black text-xl ${textPrimary}`}>{getGreeting(user.name)}</h2>
+            <p className={`text-sm mt-1 ${textSecondary}`}>
+              {todayTasks.length > 0 ? `You have ${todayTasks.length} tasks remaining today. Keep pushing!` : 'All tasks done for today! Amazing work! 🎉'}
+            </p>
           </div>
           <div className="flex items-center gap-3">
-            <div className={`text-center px-4 py-2 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
-              <p className="font-black text-2xl text-orange-500">{streak}🔥</p>
+            <div className={`text-center px-4 py-2 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+              <p className="font-black text-2xl text-orange-500">{user.streak}🔥</p>
               <p className={`text-xs ${textSecondary}`}>Day streak</p>
             </div>
-            <div className={`text-center px-4 py-2 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
-              <p className="font-black text-2xl text-purple-600">{xp}</p>
+            <div className={`text-center px-4 py-2 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+              <p className="font-black text-2xl text-purple-600">{user.xp}</p>
               <p className={`text-xs ${textSecondary}`}>XP earned</p>
             </div>
           </div>
@@ -1262,18 +1298,16 @@ function OverviewTab({ tasks, toggleTask, setTab, loading, darkMode, xp, streak 
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {loading ? (
-          Array(4).fill(0).map((_, i) => <div key={i} className={`${cardBg} rounded-2xl p-5 border h-28 animate-pulse`} />)
-        ) : (
+        {loading ? Array(4).fill(0).map((_, i) => <div key={i} className={`${cardBg} rounded-2xl p-5 border h-28 animate-pulse`} />) : (
           [
-            { label: 'Tasks Today', value: '8', sub: '3 completed', icon: '📋', color: 'text-purple-600', bg: darkMode ? 'bg-purple-900/30' : 'bg-purple-50' },
-            { label: 'Hours Studied', value: '3.5h', sub: 'This week: 14h', icon: '⏱', color: 'text-pink-500', bg: darkMode ? 'bg-pink-900/30' : 'bg-pink-50' },
-            { label: 'Completion', value: '72%', sub: 'Above average!', icon: '✅', color: 'text-green-500', bg: darkMode ? 'bg-green-900/30' : 'bg-green-50' },
-            { label: 'Exam Readiness', value: '78%', sub: 'Mathematics next', icon: '🎯', color: 'text-amber-500', bg: darkMode ? 'bg-amber-900/30' : 'bg-amber-50' },
+            { label: 'Tasks Today', value: tasks.length.toString(), sub: `${doneTasks.length} completed`, icon: '📋', color: 'text-purple-600', bg: darkMode ? 'bg-purple-900/30' : 'bg-purple-50' },
+            { label: 'Study Streak', value: `${user.streak}d`, sub: 'Keep it going! 🔥', icon: '🔥', color: 'text-orange-500', bg: darkMode ? 'bg-orange-900/30' : 'bg-orange-50' },
+            { label: 'Plan', value: user.plan === 'pro' ? 'Pro' : 'Free', sub: user.plan === 'pro' ? 'Unlimited features' : 'Upgrade for more', icon: '✨', color: 'text-pink-500', bg: darkMode ? 'bg-pink-900/30' : 'bg-pink-50' },
+            { label: 'Exam Readiness', value: exams.length > 0 ? `${exams[0].readiness}%` : 'N/A', sub: exams.length > 0 ? exams[0].subject : 'Add your exams', icon: '🎯', color: 'text-green-500', bg: darkMode ? 'bg-green-900/30' : 'bg-green-50' },
           ].map((s, i) => (
             <motion.div key={i} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0, transition: { delay: i * .07 } }}
               whileHover={{ y: -4, boxShadow: '0 12px 30px rgba(0,0,0,.08)' }}
-              className={`${cardBg} rounded-2xl p-5 border shadow-sm transition-all cursor-default`}>
+              className={`${cardBg} rounded-2xl p-5 border shadow-sm transition-all`}>
               <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center text-xl mb-3`}>{s.icon}</div>
               <p className={`font-black text-2xl ${s.color}`}>{s.value}</p>
               <p className={`text-xs font-medium mt-0.5 ${textSecondary}`}>{s.label}</p>
@@ -1284,14 +1318,13 @@ function OverviewTab({ tasks, toggleTask, setTab, loading, darkMode, xp, streak 
       </div>
 
       {/* Study tip */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-        className="bg-gradient-to-r from-purple-600 to-pink-500 rounded-2xl p-5 flex items-start gap-4">
+      <div className="bg-gradient-to-r from-purple-600 to-pink-500 rounded-2xl p-5 flex items-start gap-4">
         <span className="text-3xl">💡</span>
         <div>
           <p className="text-white font-bold text-sm mb-1">Study Tip of the Day</p>
           <p className="text-purple-100 text-sm leading-relaxed">{tip}</p>
         </div>
-      </motion.div>
+      </div>
 
       {/* Quick actions */}
       <div className={`${cardBg} rounded-2xl p-5 border shadow-sm`}>
@@ -1316,74 +1349,69 @@ function OverviewTab({ tasks, toggleTask, setTab, loading, darkMode, xp, streak 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className={`${cardBg} rounded-2xl p-6 border shadow-sm`}>
           <div className="flex items-center justify-between mb-5">
-            <h3 className={`font-bold ${textPrimary}`}>Today&apos;s Tasks</h3>
+            <h3 className={`font-bold ${textPrimary}`}>Today's Tasks</h3>
             <button onClick={() => setTab('tasks')} className="text-xs text-purple-600 font-bold hover:text-purple-700">View all →</button>
           </div>
-          {loading ? <div className="space-y-3">{Array(4).fill(0).map((_, i) => <div key={i} className={`h-12 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'} rounded-xl animate-pulse`} />)}</div> : (
-            <div className="space-y-2">
-              {tasks.map((task: Task, i: number) => (
-                <motion.div key={task.id} layout
-                  className={`flex items-center gap-3 p-3 rounded-xl transition-colors group ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}`}>
-                  <motion.button whileTap={{ scale: .85 }} onClick={() => toggleTask(task.id)}
-                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${task.done ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-purple-400'}`}>
-                    {task.done && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>}
-                  </motion.button>
-                  <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ background: task.color }} />
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-semibold truncate ${task.done ? 'line-through text-gray-400' : textPrimary}`}>{task.title}</p>
-                    <p className={`text-xs mt-0.5 ${textSecondary}`}>{task.subject}</p>
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${task.priority === 'high' ? 'bg-red-50 text-red-500' : task.priority === 'medium' ? 'bg-amber-50 text-amber-500' : 'bg-green-50 text-green-600'}`}>
-                    {task.priority}
-                  </span>
-                </motion.div>
-              ))}
-            </div>
+          {loading ? <div className="space-y-3">{Array(3).fill(0).map((_, i) => <div key={i} className={`h-12 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'} rounded-xl animate-pulse`} />)}</div> : (
+            tasks.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-4xl mb-3">📋</p>
+                <p className={`font-bold ${textPrimary}`}>No tasks yet</p>
+                <p className={`text-sm mt-1 ${textSecondary}`}>Add your first task to get started</p>
+                <button onClick={() => setTab('tasks')} className="text-purple-600 text-sm font-semibold mt-3 hover:text-purple-700">+ Add Task</button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {tasks.slice(0, 5).map((task: Task) => (
+                  <motion.div key={task.id} layout className={`flex items-center gap-3 p-3 rounded-xl transition-colors group ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}`}>
+                    <motion.button whileTap={{ scale: .85 }} onClick={() => toggleTask(task.id)}
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${task.done ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-purple-400'}`}>
+                      {task.done && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>}
+                    </motion.button>
+                    <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ background: task.color }} />
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-semibold truncate ${task.done ? 'line-through text-gray-400' : textPrimary}`}>{task.title}</p>
+                      <p className={`text-xs mt-0.5 ${textSecondary}`}>{task.subject}</p>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${task.priority === 'high' ? 'bg-red-50 text-red-500' : task.priority === 'medium' ? 'bg-amber-50 text-amber-500' : 'bg-green-50 text-green-600'}`}>
+                      {task.priority}
+                    </span>
+                  </motion.div>
+                ))}
+              </div>
+            )
           )}
         </div>
 
         <div className={`${cardBg} rounded-2xl p-6 border shadow-sm`}>
           <h3 className={`font-bold mb-5 ${textPrimary}`}>Upcoming Exams</h3>
-          <div className="space-y-4">
-            {[
-              { s: 'Mathematics', date: 'Mar 25', days: 8, pct: 72, c: '#7c3aed' },
-              { s: 'Physics', date: 'Mar 28', days: 11, pct: 55, c: '#db2777' },
-              { s: 'Chemistry', date: 'Apr 2', days: 16, pct: 40, c: '#6d28d9' },
-              { s: 'English', date: 'Apr 5', days: 19, pct: 65, c: '#d97706' },
-            ].map((e, i) => (
-              <div key={i}>
-                <div className="flex justify-between text-xs mb-1.5">
-                  <span className={`font-semibold ${textPrimary}`}>{e.s}</span>
-                  <span className={`${e.days <= 3 ? 'text-red-500 font-bold' : textSecondary}`}>{e.days}d left · {e.date}</span>
-                </div>
-                <div className={`h-2 rounded-full overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                  <motion.div initial={{ width: 0 }} animate={{ width: `${e.pct}%` }} transition={{ duration: .8, delay: i * .15 }}
-                    className="h-full rounded-full" style={{ background: e.c }} />
-                </div>
-                <p className="text-right text-xs font-black mt-0.5" style={{ color: e.c }}>{e.pct}%</p>
-              </div>
-            ))}
-            <Btn onClick={() => setTab('planner')} outline sm className="w-full mt-2">Generate Study Plan →</Btn>
-          </div>
-        </div>
-      </div>
-
-      {/* Weekly progress */}
-      <div className={`${cardBg} rounded-2xl p-6 border shadow-sm`}>
-        <div className="flex items-center justify-between mb-5">
-          <h3 className={`font-bold ${textPrimary}`}>Weekly Study Progress</h3>
-          <span className={`text-xs ${textSecondary}`}>This week: 22h</span>
-        </div>
-        <div className="flex items-end gap-2 h-24">
-          {[['M', 60, 'Mon'], ['T', 40, 'Tue'], ['W', 85, 'Wed'], ['T', 30, 'Thu'], ['F', 100, 'Fri'], ['S', 65, 'Sat'], ['S', 50, 'Sun']].map(([d, h, full], i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
-              <motion.div initial={{ height: 0 }} animate={{ height: `${h}%` }} transition={{ duration: .65, delay: i * .07, ease: 'easeOut' }}
-                className="w-full rounded-t-lg cursor-default"
-                style={{ background: i === 4 ? 'linear-gradient(to top,#7c3aed,#db2777)' : darkMode ? 'rgba(124,58,237,0.2)' : '#f3e8ff' }}
-                title={`${full}: ${Math.round(Number(h) / 100 * 5)}h`} />
-              <span className={`text-[10px] font-medium ${textSecondary}`}>{d}</span>
+          {exams.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-4xl mb-3">📅</p>
+              <p className={`font-bold ${textPrimary}`}>No exams added</p>
+              <p className={`text-sm mt-1 ${textSecondary}`}>Add your exam dates to track readiness</p>
             </div>
-          ))}
+          ) : (
+            <div className="space-y-4">
+              {exams.slice(0, 4).map((exam: Exam, i: number) => {
+                const days = daysLeft(exam.exam_date)
+                return (
+                  <div key={exam.id}>
+                    <div className="flex justify-between text-xs mb-1.5">
+                      <span className={`font-semibold ${textPrimary}`}>{exam.subject}</span>
+                      <span className={days <= 3 ? 'text-red-500 font-bold' : textSecondary}>{days}d left</span>
+                    </div>
+                    <div className={`h-2 rounded-full overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                      <motion.div initial={{ width: 0 }} animate={{ width: `${exam.readiness}%` }} transition={{ duration: .8, delay: i * .1 }}
+                        className="h-full rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                    </div>
+                    <p className="text-right text-xs font-black mt-0.5" style={{ color: COLORS[i % COLORS.length] }}>{exam.readiness}%</p>
+                  </div>
+                )
+              })}
+              <Btn onClick={() => setTab('planner')} outline sm className="w-full mt-2">Generate Study Plan →</Btn>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1391,27 +1419,26 @@ function OverviewTab({ tasks, toggleTask, setTab, loading, darkMode, xp, streak 
 }
 
 /* ── PLANNER TAB ── */
-function PlannerTab({ darkMode }: { darkMode: boolean }) {
+function PlannerTab({ user, darkMode, onPlanGenerated }: { user: User; darkMode: boolean; onPlanGenerated: () => void }) {
   const [subjects, setSubjects] = useState([''])
   const [hours, setHours] = useState('3')
   const [loading, setLoading] = useState(false)
-  const [plan, setPlan] = useState<PlanDay[] | null>(null)
+  const [plan, setPlan] = useState<any>(null)
+  const [error, setError] = useState('')
   const cardBg = darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
   const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
 
   async function generate(e: React.FormEvent) {
     e.preventDefault()
     const valid = subjects.filter(s => s.trim())
-    if (!valid.length) return
-    setLoading(true); setPlan(null)
-    await new Promise(r => setTimeout(r, 2000))
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    setPlan(days.map(day => ({
-      day,
-      sessions: valid.slice(0, 3).map((s, i) => ({
-        subject: s, time: `${8 + i * 2}:00 — ${10 + i * 2}:00`, color: COLORS[i % COLORS.length], duration: 120
-      }))
-    })))
+    if (!valid.length) { setError('Please add at least one subject'); return }
+    setLoading(true); setError(''); setPlan(null)
+    try {
+      const data = await api('/api/study-plans', { method: 'POST', body: JSON.stringify({ subjects: valid, hours_per_day: Number(hours) }) })
+      if (data.error) { setError(data.error); setLoading(false); return }
+      setPlan(data.plan?.plan_data)
+      onPlanGenerated()
+    } catch { setError('Failed to generate plan. Please try again.') }
     setLoading(false)
   }
 
@@ -1419,7 +1446,11 @@ function PlannerTab({ darkMode }: { darkMode: boolean }) {
     <div className="max-w-4xl mx-auto space-y-5">
       <div className={`${cardBg} rounded-2xl p-6 border`}>
         <h2 className={`font-black text-xl tracking-tight mb-1 ${textPrimary}`}>🤖 AI Study Planner</h2>
-        <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>Tell the AI your subjects and get a personalized 7-day timetable instantly.</p>
+        <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>
+          {user.plan === 'free' ? 'Free plan: 3 AI plans per month. ' : ''}
+          Tell the AI your subjects and get a personalized 7-day timetable instantly.
+        </p>
+        {error && <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-red-500 text-sm">⚠ {error}</div>}
         <form onSubmit={generate} className="space-y-5">
           <div>
             <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Your Subjects</label>
@@ -1435,10 +1466,10 @@ function PlannerTab({ darkMode }: { darkMode: boolean }) {
                     className="w-10 h-10 rounded-xl border border-red-200 bg-red-50 text-red-400 hover:bg-red-100 flex items-center justify-center text-sm transition-colors">✕</button>}
                 </div>
               ))}
-              {subjects.length < 8 && (
+              {subjects.length < (user.plan === 'pro' ? 8 : 3) && (
                 <button type="button" onClick={() => setSubjects(p => [...p, ''])}
                   className={`w-full py-2.5 border-2 border-dashed rounded-xl text-sm transition-all ${darkMode ? 'border-gray-700 text-gray-500 hover:border-purple-700 hover:text-purple-400' : 'border-gray-200 text-gray-400 hover:border-purple-300 hover:text-purple-500'}`}>
-                  + Add subject
+                  + Add subject {user.plan === 'free' ? `(${3 - subjects.length} remaining)` : ''}
                 </button>
               )}
             </div>
@@ -1448,14 +1479,12 @@ function PlannerTab({ darkMode }: { darkMode: boolean }) {
             <div className="grid grid-cols-6 gap-2">
               {['1', '2', '3', '4', '5', '6+'].map(h => (
                 <button key={h} type="button" onClick={() => setHours(h)}
-                  className={`py-3 rounded-xl text-sm font-bold border-2 transition-all ${hours === h ? 'border-purple-600 bg-purple-50 text-purple-600' : darkMode ? 'border-gray-700 text-gray-400 hover:border-purple-700' : 'border-gray-200 text-gray-400 hover:border-purple-300'}`}>
-                  {h}h
-                </button>
+                  className={`py-3 rounded-xl text-sm font-bold border-2 transition-all ${hours === h ? 'border-purple-600 bg-purple-50 text-purple-600' : darkMode ? 'border-gray-700 text-gray-400 hover:border-purple-700' : 'border-gray-200 text-gray-400 hover:border-purple-300'}`}>{h}h</button>
               ))}
             </div>
           </div>
           <Btn type="submit" className="w-full py-3.5 text-base" disabled={loading}>
-            {loading ? <span className="flex items-center gap-2"><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>AI is building your plan...</span> : '🤖 Generate My Study Plan'}
+            {loading ? <span className="flex items-center gap-2"><Spinner />AI is building your plan...</span> : '🤖 Generate My Study Plan'}
           </Btn>
         </form>
       </div>
@@ -1466,7 +1495,7 @@ function PlannerTab({ darkMode }: { darkMode: boolean }) {
             className={`${cardBg} rounded-2xl p-12 border flex flex-col items-center gap-4 text-center`}>
             <motion.div animate={{ scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] }} transition={{ duration: 1.5, repeat: Infinity }}
               className="w-16 h-16 rounded-2xl bg-purple-50 border border-purple-100 flex items-center justify-center text-3xl">🤖</motion.div>
-            <div><p className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>AI is thinking...</p><p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>Building your personalized 7-day timetable</p></div>
+            <div><p className={`font-bold text-lg ${textPrimary}`}>AI is thinking...</p><p className="text-gray-400 text-sm mt-1">Building your personalized 7-day timetable</p></div>
             <div className="flex gap-1.5">{[0, 1, 2].map(i => <div key={i} className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: `${i * .15}s` }} />)}</div>
           </motion.div>
         )}
@@ -1474,27 +1503,37 @@ function PlannerTab({ darkMode }: { darkMode: boolean }) {
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
             <div className={`${cardBg} border rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3`}
               style={{ background: darkMode ? undefined : 'linear-gradient(135deg,#faf5ff,#fdf2f8)' }}>
-              <div><h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>✨ Your 7-Day Plan is Ready!</h3><p className={`text-sm mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>AI generated your personalized timetable</p></div>
+              <div><h3 className={`font-bold ${textPrimary}`}>✨ Your 7-Day Plan is Ready!</h3><p className="text-gray-400 text-sm mt-0.5">{plan.summary}</p></div>
               <div className="flex gap-2"><Btn sm>Save Plan</Btn><Btn outline sm onClick={() => setPlan(null)}>Regenerate</Btn></div>
             </div>
-            {plan.map((day, i) => (
+            {plan.plan?.map((day: any, i: number) => (
               <motion.div key={day.day} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0, transition: { delay: i * .05 } }}
                 className={`${cardBg} rounded-2xl p-5 border`}>
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{day.day}</h4>
-                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${darkMode ? 'bg-purple-900/30 text-purple-300 border-purple-800' : 'bg-purple-50 text-purple-600 border-purple-100'}`}>{day.sessions.length} sessions</span>
+                  <h4 className={`font-bold ${textPrimary}`}>{day.day}</h4>
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${darkMode ? 'bg-purple-900/30 text-purple-300 border-purple-800' : 'bg-purple-50 text-purple-600 border-purple-100'}`}>{day.sessions?.length} sessions · {day.totalHours}h</span>
                 </div>
                 <div className="space-y-2">
-                  {day.sessions.map((s, j) => (
+                  {day.sessions?.map((s: any, j: number) => (
                     <div key={j} className="flex items-center gap-3 px-4 py-2.5 rounded-xl" style={{ background: `${s.color}12`, border: `1px solid ${s.color}30` }}>
                       <div className="w-1.5 h-7 rounded-full flex-shrink-0" style={{ background: s.color }} />
-                      <div className="flex-1"><p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{s.subject}</p><p className="text-xs text-gray-400">{s.time} · {s.duration} min</p></div>
-                      <span className="text-xs bg-white/80 text-gray-600 px-2 py-0.5 rounded-full border font-medium">📖 Study</span>
+                      <div className="flex-1">
+                        <p className={`text-sm font-semibold ${textPrimary}`}>{s.subject}</p>
+                        <p className="text-xs text-gray-400">{s.time} · {s.topic}</p>
+                      </div>
                     </div>
                   ))}
                 </div>
               </motion.div>
             ))}
+            {plan.tips && (
+              <div className={`${cardBg} rounded-2xl p-5 border`}>
+                <p className={`font-bold mb-3 ${textPrimary}`}>💡 AI Study Tips for You</p>
+                <ul className="space-y-2">
+                  {plan.tips.map((tip: string, i: number) => <li key={i} className="text-gray-400 text-sm">• {tip}</li>)}
+                </ul>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1510,92 +1549,54 @@ function CalendarTab({ darkMode }: { darkMode: boolean }) {
   const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
   const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
 
-  const schedule: Record<string, { subject: string; color: string }[]> = {
-    Mon: [{ subject: 'Mathematics', color: '#7c3aed' }, { subject: 'Physics', color: '#db2777' }],
-    Tue: [{ subject: 'Chemistry', color: '#6d28d9' }],
-    Wed: [{ subject: 'Mathematics', color: '#7c3aed' }, { subject: 'Biology', color: '#059669' }],
-    Thu: [{ subject: 'Physics', color: '#db2777' }, { subject: 'English', color: '#d97706' }],
-    Fri: [{ subject: 'Chemistry', color: '#6d28d9' }],
-    Sat: [{ subject: 'Mathematics', color: '#7c3aed' }],
-    Sun: [],
-  }
-
   return (
     <div className="max-w-5xl mx-auto space-y-5">
       <div className={`${cardBg} rounded-2xl border overflow-hidden`}>
-        {/* Header */}
         <div className="bg-gradient-to-r from-purple-600 to-pink-500 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: .9 }} className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white">‹</motion.button>
-            <h3 className="text-white font-black text-lg">March 17 – 23, 2026</h3>
-            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: .9 }} className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white">›</motion.button>
+            <motion.button whileHover={{ scale: 1.1 }} className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white">‹</motion.button>
+            <h3 className="text-white font-black text-lg">This Week</h3>
+            <motion.button whileHover={{ scale: 1.1 }} className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white">›</motion.button>
           </div>
-          <div className="flex gap-2">
-            {['Week', 'Month'].map(v => (
-              <button key={v} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${v === 'Week' ? 'bg-white text-purple-600' : 'text-white/70 hover:text-white'}`}>{v}</button>
-            ))}
-          </div>
+          <p className="text-purple-100 text-sm">Add your study plan to see sessions here</p>
         </div>
-
-        {/* Calendar grid */}
         <div className="overflow-x-auto">
           <div className="min-w-[600px]">
-            {/* Day headers */}
             <div className="grid grid-cols-8 border-b" style={{ borderColor: darkMode ? '#374151' : '#f3f4f6' }}>
               <div className="p-3" />
               {days.map((d, i) => (
                 <div key={d} className={`p-3 text-center border-l ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
                   <p className={`text-xs font-bold uppercase tracking-wider ${textSecondary}`}>{d}</p>
-                  <p className={`text-lg font-black mt-0.5 ${i === 0 ? 'text-purple-600' : textPrimary}`}>{17 + i}</p>
+                  <p className={`text-lg font-black mt-0.5 ${i === 0 ? 'text-purple-600' : textPrimary}`}>{new Date().getDate() + i}</p>
                 </div>
               ))}
             </div>
-            {/* Schedule rows */}
-            {hours.map((hour, hi) => (
+            {hours.map((hour) => (
               <div key={hour} className={`grid grid-cols-8 border-b min-h-[80px] ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
                 <div className={`p-3 flex items-start justify-end pr-4 ${textSecondary} text-xs font-medium`}>{hour}</div>
-                {days.map((d, di) => (
-                  <div key={d} className={`border-l p-1.5 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-                    {schedule[d]?.filter((_, i) => i === hi % schedule[d]?.length).map((s, si) => (
-                      hi < (schedule[d]?.length || 0) && si === 0 ? (
-                        <motion.div key={si} whileHover={{ scale: 1.02 }}
-                          className="h-16 rounded-xl p-2 text-white cursor-pointer shadow-sm"
-                          style={{ background: `linear-gradient(135deg, ${s.color}, ${s.color}bb)` }}>
-                          <p className="text-[10px] font-bold truncate">{s.subject}</p>
-                          <p className="text-[9px] opacity-75 mt-0.5">2 hours</p>
-                        </motion.div>
-                      ) : null
-                    ))}
-                  </div>
+                {days.map((d) => (
+                  <div key={d} className={`border-l p-1.5 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`} />
                 ))}
               </div>
             ))}
           </div>
         </div>
       </div>
-
-      {/* Subject legend */}
-      <div className={`${cardBg} rounded-2xl p-5 border`}>
-        <p className={`font-bold text-sm mb-3 ${textPrimary}`}>Subject Colors</p>
-        <div className="flex flex-wrap gap-3">
-          {Object.entries(CALENDAR_COLORS).map(([subject, color]) => (
-            <div key={subject} className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full" style={{ background: color }} />
-              <span className={`text-xs font-medium ${textSecondary}`}>{subject}</span>
-            </div>
-          ))}
-        </div>
+      <div className={`${cardBg} rounded-2xl p-5 border text-center`}>
+        <p className="text-3xl mb-3">🗓️</p>
+        <p className={`font-bold ${textPrimary}`}>Generate a study plan to populate your calendar</p>
+        <p className={`text-sm mt-1 ${textSecondary}`}>Go to AI Planner → Generate My Study Plan → sessions will appear here</p>
       </div>
     </div>
   )
 }
 
 /* ── FOCUS TAB ── */
-function FocusTab({ darkMode }: { darkMode: boolean }) {
+function FocusTab({ darkMode, onSessionComplete }: { darkMode: boolean; onSessionComplete: () => void }) {
   const [running, setRunning] = useState(false)
   const [time, setTime] = useState(25 * 60)
   const [mode, setMode] = useState<'focus' | 'break'>('focus')
-  const [subject, setSubject] = useState('Mathematics')
+  const [subject, setSubject] = useState('')
   const [sessions, setSessions] = useState(0)
   const intervalRef = useRef<any>(null)
 
@@ -1604,11 +1605,11 @@ function FocusTab({ darkMode }: { darkMode: boolean }) {
       intervalRef.current = setInterval(() => {
         setTime(t => {
           if (t <= 0) {
-            clearInterval(intervalRef.current)
-            setRunning(false)
-            setSessions(s => s + 1)
-            if (mode === 'focus') { setMode('break'); setTime(5 * 60) }
-            else { setMode('focus'); setTime(25 * 60) }
+            clearInterval(intervalRef.current); setRunning(false); setSessions(s => s + 1)
+            if (mode === 'focus') {
+              api('/api/sessions', { method: 'POST', body: JSON.stringify({ subject: subject || 'General', duration_minutes: 25, session_type: 'pomodoro' }) }).then(onSessionComplete)
+              setMode('break'); setTime(5 * 60)
+            } else { setMode('focus'); setTime(25 * 60) }
             return 0
           }
           return t - 1
@@ -1629,116 +1630,90 @@ function FocusTab({ darkMode }: { darkMode: boolean }) {
         className="rounded-3xl overflow-hidden shadow-2xl"
         style={{ background: running ? 'linear-gradient(135deg,#3b0764,#7c3aed,#9d174d)' : 'linear-gradient(135deg,#1e1b4b,#312e81,#3b0764)' }}>
         <div className="p-8 md:p-12">
-          {/* Subject */}
           <div className="text-center mb-8">
             <p className="text-purple-200 text-sm font-medium mb-2">Currently studying</p>
-            <select value={subject} onChange={e => setSubject(e.target.value)}
-              className="bg-white/10 border border-white/20 text-white font-bold text-lg px-4 py-2 rounded-xl outline-none appearance-none cursor-pointer">
-              {Object.keys(CALENDAR_COLORS).map(s => <option key={s} className="text-gray-900">{s}</option>)}
-            </select>
+            <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Enter subject name..."
+              className="bg-white/10 border border-white/20 text-white font-bold text-lg px-4 py-2 rounded-xl outline-none text-center w-full max-w-xs placeholder:text-white/40" />
           </div>
-
-          {/* Timer circle */}
           <div className="flex justify-center mb-8">
             <div className="relative w-52 h-52">
               <svg className="w-full h-full -rotate-90" viewBox="0 0 180 180">
                 <circle cx="90" cy="90" r="80" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="8" />
                 <motion.circle cx="90" cy="90" r="80" fill="none" stroke="url(#timerGrad)" strokeWidth="8"
-                  strokeLinecap="round" strokeDasharray={circumference}
-                  animate={{ strokeDashoffset: circumference * (1 - progress) }}
-                  transition={{ duration: .5 }} />
+                  strokeLinecap="round" strokeDasharray={circumference} animate={{ strokeDashoffset: circumference * (1 - progress) }} transition={{ duration: .5 }} />
                 <defs>
                   <linearGradient id="timerGrad" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#a855f7" />
-                    <stop offset="100%" stopColor="#ec4899" />
+                    <stop offset="0%" stopColor="#a855f7" /><stop offset="100%" stopColor="#ec4899" />
                   </linearGradient>
                 </defs>
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <motion.p key={time} className="text-5xl font-black text-white tracking-tight"
-                  initial={{ scale: 1.05 }} animate={{ scale: 1 }}>
-                  {mins}:{secs}
-                </motion.p>
+                <motion.p key={time} className="text-5xl font-black text-white tracking-tight" initial={{ scale: 1.05 }} animate={{ scale: 1 }}>{mins}:{secs}</motion.p>
                 <p className="text-purple-200 text-sm font-medium mt-1">{mode === 'focus' ? 'Focus Session' : 'Short Break'}</p>
               </div>
             </div>
           </div>
-
-          {/* Mode selector */}
           <div className="flex justify-center gap-3 mb-8">
-            {[{ label: 'Focus', mins: 25, m: 'focus' as const }, { label: 'Short Break', mins: 5, m: 'break' as const }, { label: 'Long Break', mins: 15, m: 'break' as const }].map(item => (
+            {[{ label: 'Focus', mins: 25, m: 'focus' as const }, { label: 'Short Break', mins: 5, m: 'break' as const }].map(item => (
               <button key={item.label} onClick={() => { setMode(item.m); setTime(item.mins * 60); setRunning(false) }}
                 className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${mode === item.m && item.label === 'Focus' ? 'bg-white text-purple-700' : 'text-white/60 hover:text-white hover:bg-white/10'}`}>
                 {item.label}
               </button>
             ))}
           </div>
-
-          {/* Controls */}
           <div className="flex items-center justify-center gap-4">
-            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }}
-              onClick={() => { setTime(25 * 60); setRunning(false); setMode('focus') }}
-              className="w-12 h-12 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-colors">
-              ↺
-            </motion.button>
-            <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: .92 }}
-              onClick={() => setRunning(!running)}
+            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => { setTime(25 * 60); setRunning(false); setMode('focus') }}
+              className="w-12 h-12 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-colors">↺</motion.button>
+            <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: .92 }} onClick={() => setRunning(!running)}
               className="w-20 h-20 rounded-full bg-white flex items-center justify-center shadow-2xl">
               {running
                 ? <svg width="24" height="24" viewBox="0 0 24 24" fill="#7c3aed"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
                 : <svg width="24" height="24" viewBox="0 0 24 24" fill="#7c3aed"><path d="M8 5v14l11-7z" /></svg>}
             </motion.button>
-            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }}
-              onClick={() => { setRunning(false); setTime(mode === 'focus' ? 25 * 60 : 5 * 60) }}
-              className="w-12 h-12 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-colors">
-              ⏹
-            </motion.button>
+            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => { setRunning(false); setTime(mode === 'focus' ? 25 * 60 : 5 * 60) }}
+              className="w-12 h-12 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-colors">⏹</motion.button>
           </div>
-
-          {/* Session count */}
           <div className="text-center mt-8">
-            <div className="flex justify-center gap-2 mb-2">
-              {Array(4).fill(0).map((_, i) => (
-                <div key={i} className={`w-3 h-3 rounded-full transition-all ${i < sessions % 4 ? 'bg-purple-400' : 'bg-white/20'}`} />
-              ))}
-            </div>
+            <div className="flex justify-center gap-2 mb-2">{Array(4).fill(0).map((_, i) => <div key={i} className={`w-3 h-3 rounded-full transition-all ${i < sessions % 4 ? 'bg-purple-400' : 'bg-white/20'}`} />)}</div>
             <p className="text-purple-200 text-sm">{sessions} sessions completed today</p>
           </div>
         </div>
       </motion.div>
-
-      {/* Tips */}
-      <div className={`mt-5 rounded-2xl p-5 ${darkMode ? 'bg-gray-900 border border-gray-800' : 'bg-white border border-gray-100'}`}>
-        <p className={`font-bold text-sm mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Focus Tips 💡</p>
-        <ul className={`space-y-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          <li>📵 Put your phone in another room during focus sessions</li>
-          <li>💧 Keep a glass of water on your desk</li>
-          <li>🎵 Try lo-fi music to boost concentration</li>
-          <li>📝 Write your goal for this session before starting</li>
-        </ul>
-      </div>
     </div>
   )
 }
 
 /* ── TASKS TAB ── */
-function TasksTab({ tasks, setTasks, toggleTask, darkMode }: any) {
+function TasksTab({ tasks, setTasks, toggleTask, darkMode, onAdd }: any) {
   const [filter, setFilter] = useState<'all' | 'pending' | 'done' | 'high'>('all')
   const [showForm, setShowForm] = useState(false)
   const [nt, setNt] = useState({ title: '', subject: '', priority: 'medium' as Task['priority'], deadline: '' })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const cardBg = darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
   const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
+  const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
   const inputCls = darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder:text-gray-600 focus:border-purple-500' : 'bg-gray-50 border-gray-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-100'
 
-  const filtered = tasks.filter((t: Task) =>
-    filter === 'all' ? true : filter === 'pending' ? !t.done : filter === 'done' ? t.done : t.priority === 'high' && !t.done
-  )
+  const filtered = tasks.filter((t: Task) => filter === 'all' ? true : filter === 'pending' ? !t.done : filter === 'done' ? t.done : t.priority === 'high' && !t.done)
 
-  function add(e: React.FormEvent) {
+  async function add(e: React.FormEvent) {
     e.preventDefault()
     if (!nt.title.trim()) return
-    setTasks((p: Task[]) => [...p, { id: Date.now().toString(), ...nt, done: false, color: COLORS[p.length % COLORS.length] }])
-    setNt({ title: '', subject: '', priority: 'medium', deadline: '' }); setShowForm(false)
+    setLoading(true); setError('')
+    try {
+      const data = await api('/api/tasks', { method: 'POST', body: JSON.stringify({ ...nt, color: COLORS[tasks.length % COLORS.length] }) })
+      if (data.error) { setError(data.error); setLoading(false); return }
+      setTasks((p: Task[]) => [data.task, ...p])
+      setNt({ title: '', subject: '', priority: 'medium', deadline: '' }); setShowForm(false)
+      onAdd()
+    } catch { setError('Failed to add task') }
+    setLoading(false)
+  }
+
+  async function deleteTask(id: string) {
+    await api(`/api/tasks?id=${id}`, { method: 'DELETE' })
+    setTasks((p: Task[]) => p.filter((t: Task) => t.id !== id))
   }
 
   return (
@@ -1746,7 +1721,7 @@ function TasksTab({ tasks, setTasks, toggleTask, darkMode }: any) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className={`font-black text-xl tracking-tight ${textPrimary}`}>Tasks</h2>
-          <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>{tasks.filter((t: Task) => !t.done).length} pending · {tasks.filter((t: Task) => t.done).length} done</p>
+          <p className={`text-sm ${textSecondary}`}>{tasks.filter((t: Task) => !t.done).length} pending · {tasks.filter((t: Task) => t.done).length} done</p>
         </div>
         <Btn sm onClick={() => setShowForm(!showForm)}>{showForm ? '✕ Cancel' : '+ Add Task'}</Btn>
       </div>
@@ -1755,34 +1730,38 @@ function TasksTab({ tasks, setTasks, toggleTask, darkMode }: any) {
         {showForm && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <div className={`${cardBg} rounded-2xl p-6 border`}>
+              {error && <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-red-500 text-sm">⚠ {error}</div>}
               <form onSubmit={add} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className={`block text-xs font-bold uppercase tracking-wider mb-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Task Title</label>
+                    <label className={`block text-xs font-bold uppercase tracking-wider mb-1.5 ${textSecondary}`}>Task Title</label>
                     <input value={nt.title} placeholder="e.g. Complete Chapter 5" onChange={e => setNt({ ...nt, title: e.target.value })}
                       className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none transition-all ${inputCls}`} />
                   </div>
                   <div>
-                    <label className={`block text-xs font-bold uppercase tracking-wider mb-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Subject</label>
+                    <label className={`block text-xs font-bold uppercase tracking-wider mb-1.5 ${textSecondary}`}>Subject</label>
                     <input value={nt.subject} placeholder="e.g. Mathematics" onChange={e => setNt({ ...nt, subject: e.target.value })}
                       className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none transition-all ${inputCls}`} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={`block text-xs font-bold uppercase tracking-wider mb-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Priority</label>
+                    <label className={`block text-xs font-bold uppercase tracking-wider mb-1.5 ${textSecondary}`}>Priority</label>
                     <select value={nt.priority} onChange={e => setNt({ ...nt, priority: e.target.value as Task['priority'] })}
                       className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none transition-all appearance-none ${inputCls}`}>
                       <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
                     </select>
                   </div>
                   <div>
-                    <label className={`block text-xs font-bold uppercase tracking-wider mb-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Deadline</label>
+                    <label className={`block text-xs font-bold uppercase tracking-wider mb-1.5 ${textSecondary}`}>Deadline</label>
                     <input type="date" value={nt.deadline} onChange={e => setNt({ ...nt, deadline: e.target.value })}
                       className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none transition-all ${inputCls}`} />
                   </div>
                 </div>
-                <div className="flex gap-3"><Btn type="submit" sm>Add Task</Btn><Btn outline sm onClick={() => setShowForm(false)}>Cancel</Btn></div>
+                <div className="flex gap-3">
+                  <Btn type="submit" sm disabled={loading}>{loading ? <><Spinner />Adding...</> : 'Add Task'}</Btn>
+                  <Btn outline sm onClick={() => setShowForm(false)}>Cancel</Btn>
+                </div>
               </form>
             </div>
           </motion.div>
@@ -1793,7 +1772,7 @@ function TasksTab({ tasks, setTasks, toggleTask, darkMode }: any) {
         {([['all', 'All'], ['pending', 'Pending'], ['high', '🔥 Urgent'], ['done', 'Done']] as const).map(([f, label]) => (
           <button key={f} onClick={() => setFilter(f)}
             className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition-all ${filter === f ? 'bg-purple-50 text-purple-700 border border-purple-100' : darkMode ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50'}`}>
-            {label} ({f === 'all' ? tasks.length : f === 'pending' ? tasks.filter((t: Task) => !t.done).length : f === 'done' ? tasks.filter((t: Task) => t.done).length : tasks.filter((t: Task) => t.priority === 'high' && !t.done).length})
+            {label}
           </button>
         ))}
       </div>
@@ -1804,7 +1783,7 @@ function TasksTab({ tasks, setTasks, toggleTask, darkMode }: any) {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16">
               <div className="text-6xl mb-4">🎉</div>
               <p className={`font-bold text-lg ${textPrimary}`}>All done!</p>
-              <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>No {filter === 'done' ? 'completed' : 'pending'} tasks. You're crushing it!</p>
+              <p className={`text-sm mt-1 ${textSecondary}`}>No {filter === 'done' ? 'completed' : 'pending'} tasks.</p>
             </motion.div>
           ) : filtered.map((task: Task, i: number) => (
             <motion.div key={task.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: i * .04 } }} exit={{ opacity: 0, x: -20 }}
@@ -1816,13 +1795,12 @@ function TasksTab({ tasks, setTasks, toggleTask, darkMode }: any) {
               <div className="w-1 h-10 rounded-full flex-shrink-0" style={{ background: task.color }} />
               <div className="flex-1 min-w-0">
                 <p className={`font-semibold text-sm ${task.done ? 'line-through text-gray-400' : textPrimary}`}>{task.title}</p>
-                <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{task.subject} {task.deadline ? `· Due ${task.deadline}` : ''}</p>
+                <p className={`text-xs mt-0.5 ${textSecondary}`}>{task.subject}{task.deadline ? ` · Due ${task.deadline}` : ''}</p>
               </div>
               <span className={`text-xs px-2.5 py-1 rounded-full font-semibold flex-shrink-0 ${task.priority === 'high' ? 'bg-red-50 text-red-500' : task.priority === 'medium' ? 'bg-amber-50 text-amber-500' : 'bg-green-50 text-green-600'}`}>
                 {task.priority}
               </span>
-              <button onClick={() => setTasks((p: Task[]) => p.filter((t: Task) => t.id !== task.id))}
-                className="opacity-0 group-hover:opacity-100 p-2 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-all">✕</button>
+              <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 p-2 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-all">✕</button>
             </motion.div>
           ))}
         </AnimatePresence>
@@ -1833,55 +1811,59 @@ function TasksTab({ tasks, setTasks, toggleTask, darkMode }: any) {
 
 /* ── ANALYTICS TAB ── */
 function AnalyticsTab({ darkMode }: { darkMode: boolean }) {
+  const [analytics, setAnalytics] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const cardBg = darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
   const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
   const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
 
-  // Heatmap data
-  const heatmapData = Array(52).fill(0).map(() => Array(7).fill(0).map(() => Math.random() > 0.4 ? Math.floor(Math.random() * 4) : 0))
+  useEffect(() => {
+    api('/api/analytics').then(data => { if (data.analytics) setAnalytics(data.analytics); setLoading(false) })
+  }, [])
+
+  if (loading) return <div className="max-w-4xl mx-auto space-y-5">{Array(4).fill(0).map((_, i) => <div key={i} className={`${cardBg} rounded-2xl p-5 border h-32 animate-pulse`} />)}</div>
+
+  const heatmapData = Array(16).fill(0).map(() => Array(7).fill(0).map(() => Math.random() > 0.4 ? Math.floor(Math.random() * 4) : 0))
 
   return (
     <div className="max-w-4xl mx-auto space-y-5">
-      <div>
-        <h2 className={`font-black text-xl tracking-tight ${textPrimary}`}>Analytics</h2>
-        <p className={`text-sm mt-0.5 ${textSecondary}`}>Your complete study performance overview.</p>
-      </div>
+      <div><h2 className={`font-black text-xl tracking-tight ${textPrimary}`}>Analytics</h2><p className={`text-sm mt-0.5 ${textSecondary}`}>Your complete study performance overview.</p></div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[['89h', 'Total Hours', '#7c3aed'], ['12 days', 'Streak', '#db2777'], ['3.2h', 'Daily Avg', '#059669'], ['47', 'Tasks Done', '#d97706']].map(([v, l, c], i) => (
+        {[
+          [analytics?.totalHours || 0, 'h', 'Total Hours', '#7c3aed'],
+          [analytics?.streak || 0, 'd', 'Study Streak', '#db2777'],
+          [analytics?.completedTasks || 0, '', 'Tasks Done', '#059669'],
+          [analytics?.completionRate || 0, '%', 'Completion', '#d97706'],
+        ].map(([v, s, l, c], i) => (
           <motion.div key={i} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0, transition: { delay: i * .07 } }}
             whileHover={{ y: -4 }} className={`${cardBg} rounded-2xl p-5 border shadow-sm transition-all`}>
             <div className="w-8 h-8 rounded-lg mb-3 flex items-center justify-center" style={{ background: `${c}18` }}>
               <div className="w-3 h-3 rounded-full" style={{ background: c as string }} />
             </div>
-            <p className="font-black text-2xl mb-0.5" style={{ color: c as string }}>{v}</p>
+            <p className="font-black text-2xl mb-0.5" style={{ color: c as string }}>{v}{s}</p>
             <p className={`text-xs font-medium ${textSecondary}`}>{l}</p>
           </motion.div>
         ))}
       </div>
 
-      {/* Study Heatmap */}
+      {/* Heatmap */}
       <div className={`${cardBg} rounded-2xl p-6 border shadow-sm`}>
         <h3 className={`font-bold mb-5 ${textPrimary}`}>Study Heatmap</h3>
         <div className="overflow-x-auto">
           <div className="flex gap-1 min-w-max">
-            {heatmapData.slice(-16).map((week, wi) => (
+            {heatmapData.map((week, wi) => (
               <div key={wi} className="flex flex-col gap-1">
                 {week.map((day, di) => (
-                  <motion.div key={di} whileHover={{ scale: 1.5 }}
-                    className="w-3 h-3 rounded-sm cursor-pointer"
-                    style={{ background: day === 0 ? darkMode ? '#1f2937' : '#f3f4f6' : day === 1 ? '#e9d5ff' : day === 2 ? '#a855f7' : day === 3 ? '#7c3aed' : '#581c87' }}
-                    title={`${day} hours`}
-                  />
+                  <motion.div key={di} whileHover={{ scale: 1.5 }} className="w-3 h-3 rounded-sm cursor-pointer"
+                    style={{ background: day === 0 ? darkMode ? '#1f2937' : '#f3f4f6' : day === 1 ? '#e9d5ff' : day === 2 ? '#a855f7' : day === 3 ? '#7c3aed' : '#581c87' }} />
                 ))}
               </div>
             ))}
           </div>
           <div className="flex items-center gap-2 mt-3">
             <span className={`text-xs ${textSecondary}`}>Less</span>
-            {['#f3f4f6', '#e9d5ff', '#a855f7', '#7c3aed', '#581c87'].map((c, i) => (
-              <div key={i} className="w-3 h-3 rounded-sm" style={{ background: c }} />
-            ))}
+            {['#f3f4f6', '#e9d5ff', '#a855f7', '#7c3aed', '#581c87'].map((c, i) => <div key={i} className="w-3 h-3 rounded-sm" style={{ background: c }} />)}
             <span className={`text-xs ${textSecondary}`}>More</span>
           </div>
         </div>
@@ -1889,72 +1871,43 @@ function AnalyticsTab({ darkMode }: { darkMode: boolean }) {
 
       {/* Weekly chart */}
       <div className={`${cardBg} rounded-2xl p-6 border shadow-sm`}>
-        <div className="flex items-center justify-between mb-5">
-          <h3 className={`font-bold ${textPrimary}`}>Study Hours — Past 6 Weeks</h3>
-          <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${darkMode ? 'bg-purple-900/30 text-purple-300 border border-purple-800' : 'bg-purple-50 text-purple-600 border border-purple-100'}`}>↑ 31%</span>
-        </div>
-        <div className="flex items-end gap-3 h-36">
-          {[[14, 'W1'], [18, 'W2'], [12, 'W3'], [22, 'W4'], [19, 'W5'], [25, 'W6']].map(([h, label], i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-2">
-              <motion.div initial={{ height: 0 }} animate={{ height: `${(Number(h) / 25) * 100}%` }} transition={{ duration: .65, delay: i * .1, ease: 'easeOut' }}
-                className="w-full rounded-t-xl cursor-pointer" whileHover={{ scale: 1.05 }}
-                style={{ background: i === 5 ? 'linear-gradient(to top,#7c3aed,#db2777)' : darkMode ? 'rgba(124,58,237,0.2)' : '#f3e8ff' }}
-                title={`${h}h`} />
-              <span className={`text-xs font-medium ${textSecondary}`}>{label}</span>
+        <h3 className={`font-bold mb-5 ${textPrimary}`}>Study Hours — This Week</h3>
+        <div className="flex items-end gap-2 h-36">
+          {analytics?.weeklyHours?.map((d: any, i: number) => (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
+              <motion.div initial={{ height: 0 }} animate={{ height: d.hours > 0 ? `${(d.hours / Math.max(...analytics.weeklyHours.map((x: any) => x.hours), 1)) * 100}%` : '4px' }}
+                transition={{ duration: .65, delay: i * .07 }}
+                className="w-full rounded-t-lg"
+                style={{ background: i === analytics.weeklyHours.length - 1 ? 'linear-gradient(to top,#7c3aed,#db2777)' : darkMode ? 'rgba(124,58,237,0.2)' : '#f3e8ff' }} />
+              <span className={`text-[10px] font-medium ${textSecondary}`}>{d.day}</span>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Exam readiness */}
-      <div className={`${cardBg} rounded-2xl p-6 border shadow-sm`}>
-        <h3 className={`font-bold mb-5 ${textPrimary}`}>Exam Readiness</h3>
-        <div className="space-y-5">
-          {[
-            { s: 'Mathematics', pct: 72, days: 8, c: '#7c3aed', msg: '📚 On track — keep going!' },
-            { s: 'Physics', pct: 55, days: 11, c: '#db2777', msg: '📚 Getting there, push harder' },
-            { s: 'Chemistry', pct: 40, days: 16, c: '#6d28d9', msg: '⚠️ Needs more study time' },
-            { s: 'English', pct: 80, days: 19, c: '#d97706', msg: '✅ Great shape — maintain pace' },
-          ].map((exam, i) => (
-            <div key={i}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className={`font-bold text-sm ${textPrimary}`}>{exam.s}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-400'}`}>{exam.days}d left</span>
-                </div>
-                <span className="text-sm font-black" style={{ color: exam.c }}>{exam.pct}%</span>
-              </div>
-              <div className={`h-3 rounded-full overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                <motion.div initial={{ width: 0 }} animate={{ width: `${exam.pct}%` }} transition={{ duration: .9, delay: i * .15 }}
-                  className="h-full rounded-full" style={{ background: exam.c }} />
-              </div>
-              <p className={`text-xs mt-1.5 ${textSecondary}`}>{exam.msg}</p>
-            </div>
-          ))}
+          )) || <p className={`text-sm ${textSecondary}`}>No study sessions yet this week</p>}
         </div>
       </div>
 
       {/* Subject breakdown */}
-      <div className={`${cardBg} rounded-2xl p-6 border shadow-sm`}>
-        <h3 className={`font-bold mb-5 ${textPrimary}`}>Subject Breakdown</h3>
-        <div className="space-y-4">
-          {[['Mathematics', 12, 20, '#7c3aed'], ['Physics', 8, 15, '#db2777'], ['Chemistry', 6, 18, '#6d28d9'], ['English', 4, 10, '#d97706'], ['Biology', 9, 14, '#059669']].map(([name, done, total, color], i) => {
-            const pct = Math.round((Number(done) / Number(total)) * 100)
-            return (
-              <div key={i}>
-                <div className="flex justify-between text-xs mb-1.5">
-                  <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ background: color as string }} /><span className={`font-medium ${textPrimary}`}>{name}</span></div>
-                  <span className={textSecondary}>{done}h / {total}h · {pct}%</span>
+      {analytics?.subjectBreakdown?.length > 0 && (
+        <div className={`${cardBg} rounded-2xl p-6 border shadow-sm`}>
+          <h3 className={`font-bold mb-5 ${textPrimary}`}>Subject Breakdown</h3>
+          <div className="space-y-4">
+            {analytics.subjectBreakdown.map((s: any, i: number) => {
+              const max = Math.max(...analytics.subjectBreakdown.map((x: any) => x.hours))
+              return (
+                <div key={i}>
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} /><span className={`font-medium ${textPrimary}`}>{s.subject}</span></div>
+                    <span className={textSecondary}>{s.hours}h</span>
+                  </div>
+                  <div className={`h-2 rounded-full overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${(s.hours / max) * 100}%` }} transition={{ duration: .8, delay: i * .1 }}
+                      className="h-full rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                  </div>
                 </div>
-                <div className={`h-2 rounded-full overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                  <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: .8, delay: i * .1 }}
-                    className="h-full rounded-full" style={{ background: color as string }} />
-                </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -1962,24 +1915,41 @@ function AnalyticsTab({ darkMode }: { darkMode: boolean }) {
 /* ── NOTES TAB ── */
 function NotesTab({ notes, setNotes, darkMode }: any) {
   const [active, setActive] = useState<Note | null>(null)
-  const [newNote, setNewNote] = useState(false)
+  const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ subject: '', content: '' })
+  const [loading, setLoading] = useState(false)
   const cardBg = darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
   const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
   const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
   const inputCls = darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder:text-gray-600' : 'bg-gray-50 border-gray-200'
 
+  useEffect(() => {
+    api('/api/notes').then(data => { if (data.notes) setNotes(data.notes) })
+  }, [])
+
+  async function saveNote() {
+    if (!form.subject || !form.content) return
+    setLoading(true)
+    const data = await api('/api/notes', { method: 'POST', body: JSON.stringify({ ...form, color: COLORS[notes.length % COLORS.length] }) })
+    if (data.note) { setNotes((p: Note[]) => [data.note, ...p]); setForm({ subject: '', content: '' }); setShowForm(false) }
+    setLoading(false)
+  }
+
+  async function deleteNote(id: string) {
+    await api(`/api/notes?id=${id}`, { method: 'DELETE' })
+    setNotes((p: Note[]) => p.filter((n: Note) => n.id !== id))
+    if (active?.id === id) setActive(null)
+  }
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-5">
         <h2 className={`font-black text-xl ${textPrimary}`}>Notes 📝</h2>
-        <Btn sm onClick={() => { setNewNote(true); setActive(null) }}>+ New Note</Btn>
+        <Btn sm onClick={() => { setShowForm(true); setActive(null) }}>+ New Note</Btn>
       </div>
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* Note list */}
         <div className="space-y-3">
-          {newNote && (
+          {showForm && (
             <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
               className={`${cardBg} rounded-2xl p-4 border-2 border-purple-400`}>
               <input placeholder="Subject" value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })}
@@ -1987,30 +1957,29 @@ function NotesTab({ notes, setNotes, darkMode }: any) {
               <textarea placeholder="Write your note..." value={form.content} onChange={e => setForm({ ...form, content: e.target.value })}
                 rows={3} className={`w-full px-3 py-2 rounded-xl border text-sm outline-none resize-none transition-all ${inputCls}`} />
               <div className="flex gap-2 mt-2">
-                <Btn sm onClick={() => {
-                  if (!form.subject || !form.content) return
-                  const note: Note = { id: Date.now().toString(), ...form, updatedAt: 'Just now', color: COLORS[notes.length % COLORS.length] }
-                  setNotes((p: Note[]) => [note, ...p]); setForm({ subject: '', content: '' }); setNewNote(false)
-                }}>Save</Btn>
-                <Btn outline sm onClick={() => setNewNote(false)}>Cancel</Btn>
+                <Btn sm onClick={saveNote} disabled={loading}>{loading ? <><Spinner />Saving...</> : 'Save'}</Btn>
+                <Btn outline sm onClick={() => setShowForm(false)}>Cancel</Btn>
               </div>
             </motion.div>
           )}
-          {notes.map((note: Note) => (
-            <motion.div key={note.id} whileHover={{ scale: 1.01 }}
-              onClick={() => { setActive(note); setNewNote(false) }}
+          {notes.length === 0 && !showForm ? (
+            <div className={`${cardBg} rounded-2xl p-6 border text-center`}>
+              <p className="text-3xl mb-3">📝</p>
+              <p className={`font-bold text-sm ${textPrimary}`}>No notes yet</p>
+              <p className={`text-xs mt-1 ${textSecondary}`}>Create your first note</p>
+            </div>
+          ) : notes.map((note: Note) => (
+            <motion.div key={note.id} whileHover={{ scale: 1.01 }} onClick={() => { setActive(note); setShowForm(false) }}
               className={`${cardBg} rounded-2xl p-4 border cursor-pointer transition-all ${active?.id === note.id ? 'border-purple-400 shadow-md' : ''}`}>
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: note.color }} />
                 <p className={`font-bold text-sm truncate ${textPrimary}`}>{note.subject}</p>
               </div>
               <p className={`text-xs leading-relaxed line-clamp-2 ${textSecondary}`}>{note.content}</p>
-              <p className={`text-[10px] mt-2 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>{note.updatedAt}</p>
+              <p className={`text-[10px] mt-2 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>{timeAgo(note.updated_at)}</p>
             </motion.div>
           ))}
         </div>
-
-        {/* Note editor */}
         <div className="md:col-span-2">
           {active ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`${cardBg} rounded-2xl p-6 border h-full`}>
@@ -2019,12 +1988,10 @@ function NotesTab({ notes, setNotes, darkMode }: any) {
                   <div className="w-3 h-3 rounded-full" style={{ background: active.color }} />
                   <h3 className={`font-bold text-lg ${textPrimary}`}>{active.subject}</h3>
                 </div>
-                <div className="flex gap-2">
-                  <Btn sm outline onClick={() => setNotes((p: Note[]) => p.filter(n => n.id !== active.id)) as any || setActive(null)}>Delete</Btn>
-                </div>
+                <button onClick={() => deleteNote(active.id)} className="text-red-400 text-sm font-semibold hover:text-red-500">Delete</button>
               </div>
               <p className={`text-sm leading-relaxed whitespace-pre-wrap ${textSecondary}`}>{active.content}</p>
-              <p className={`text-xs mt-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>Updated {active.updatedAt}</p>
+              <p className={`text-xs mt-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>Updated {timeAgo(active.updated_at)}</p>
             </motion.div>
           ) : (
             <div className={`${cardBg} rounded-2xl border h-64 flex flex-col items-center justify-center text-center p-8`}>
@@ -2040,57 +2007,55 @@ function NotesTab({ notes, setNotes, darkMode }: any) {
 }
 
 /* ── AI BUDDY TAB ── */
-function AIBuddyTab({ darkMode }: { darkMode: boolean }) {
+function AIBuddyTab({ user, darkMode }: { user: User; darkMode: boolean }) {
   const [messages, setMessages] = useState([
-    { role: 'assistant', text: 'Hi! I\'m StudyPilot AI 🤖 I can help you understand any topic, quiz you on your subjects, or give you study tips. What would you like to work on?' }
+    { role: 'assistant', text: `Hi ${user.name}! I'm StudyPilot AI 🤖 I can help you understand any topic, quiz you on your subjects, or give you study tips. What would you like to work on?` }
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const cardBg = darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
   const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
+  const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
   const inputCls = darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder:text-gray-600' : 'bg-gray-50 border-gray-200'
-
-  const suggestions = ['Explain integration by parts', 'Quiz me on wave motion', 'Give me a study plan for Physics', 'What is organic chemistry?']
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   async function send(text?: string) {
     const msg = text || input.trim()
     if (!msg) return
+    if (user.plan === 'free') {
+      setMessages(p => [...p, { role: 'user', text: msg }, { role: 'assistant', text: '🔒 AI Study Buddy is a Pro feature. Upgrade to Pro to chat with StudyPilot AI about any topic, get quizzes, and personalized study help!' }])
+      setInput(''); return
+    }
     setMessages(p => [...p, { role: 'user', text: msg }])
     setInput(''); setLoading(true)
-    await new Promise(r => setTimeout(r, 1500))
-    const responses: Record<string, string> = {
-      'Explain integration by parts': "Integration by parts uses the formula: ∫u dv = uv - ∫v du\n\nThe trick is choosing u and dv wisely. Use the LIATE rule:\n• L - Logarithmic\n• I - Inverse trig\n• A - Algebraic\n• T - Trigonometric\n• E - Exponential\n\nChoose u as whatever comes first in LIATE. Want me to work through an example?",
-      'Quiz me on wave motion': "Great! Let's quiz you on wave motion 📚\n\nQuestion 1: What is the relationship between wave frequency (f), wavelength (λ), and wave speed (v)?\n\nA) v = f + λ\nB) v = f × λ ✓\nC) v = f ÷ λ\nD) v = λ ÷ f\n\nType your answer (A, B, C, or D)!",
+    try {
+      const data = await api('/api/ai-chat', { method: 'POST', body: JSON.stringify({ message: msg }) })
+      setMessages(p => [...p, { role: 'assistant', text: data.reply || 'Sorry, I could not process that. Please try again.' }])
+    } catch {
+      setMessages(p => [...p, { role: 'assistant', text: 'Sorry, something went wrong. Please try again.' }])
     }
-    const reply = responses[msg] || `Great question about "${msg}"! 🤖\n\nThis is a connected live AI feature — once the backend is set up with OpenAI, I'll give you detailed, accurate answers about any topic, create quizzes, explain concepts step by step, and even adapt to your learning style.\n\nFor now I'm in demo mode! 🚀`
-    setMessages(p => [...p, { role: 'assistant', text: reply }])
     setLoading(false)
   }
+
+  const suggestions = ['Explain integration by parts', 'Quiz me on wave motion', 'Give me study tips for exams', 'What is organic chemistry?']
 
   return (
     <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-200px)]">
       <div className={`${cardBg} rounded-2xl border flex flex-col flex-1 overflow-hidden`}>
-        {/* Header */}
         <div className="p-4 border-b flex items-center gap-3" style={{ borderColor: darkMode ? '#374151' : '#f3f4f6' }}>
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-xl">🤖</div>
           <div>
             <p className={`font-bold text-sm ${textPrimary}`}>StudyPilot AI</p>
-            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /><span className="text-xs text-green-500 font-medium">Online</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /><span className="text-xs text-green-500 font-medium">{user.plan === 'pro' ? 'Online' : 'Pro feature'}</span></div>
           </div>
+          {user.plan === 'free' && <span className="ml-auto text-xs bg-purple-50 text-purple-600 border border-purple-100 px-2 py-1 rounded-full font-semibold">Upgrade to Pro</span>}
         </div>
-
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.map((msg, i) => (
-            <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${msg.role === 'user'
-                  ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-br-sm'
-                  : darkMode ? 'bg-gray-800 text-gray-200 rounded-bl-sm' : 'bg-gray-100 text-gray-800 rounded-bl-sm'
-                }`}>
+            <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${msg.role === 'user' ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-br-sm' : darkMode ? 'bg-gray-800 text-gray-200 rounded-bl-sm' : 'bg-gray-100 text-gray-800 rounded-bl-sm'}`}>
                 {msg.text}
               </div>
             </motion.div>
@@ -2104,8 +2069,6 @@ function AIBuddyTab({ darkMode }: { darkMode: boolean }) {
           )}
           <div ref={bottomRef} />
         </div>
-
-        {/* Suggestions */}
         {messages.length <= 1 && (
           <div className="px-4 pb-3 flex flex-wrap gap-2">
             {suggestions.map(s => (
@@ -2116,14 +2079,12 @@ function AIBuddyTab({ darkMode }: { darkMode: boolean }) {
             ))}
           </div>
         )}
-
-        {/* Input */}
-        <div className={`p-4 border-t flex gap-3`} style={{ borderColor: darkMode ? '#374151' : '#f3f4f6' }}>
+        <div className="p-4 border-t flex gap-3" style={{ borderColor: darkMode ? '#374151' : '#f3f4f6' }}>
           <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
-            placeholder="Ask me anything about your subjects..."
-            className={`flex-1 px-4 py-3 rounded-xl border text-sm outline-none transition-all ${inputCls} focus:border-purple-400`} />
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => send()}
-            disabled={!input.trim() || loading}
+            placeholder={user.plan === 'pro' ? 'Ask me anything about your subjects...' : 'Upgrade to Pro to chat with AI...'}
+            disabled={user.plan === 'free'}
+            className={`flex-1 px-4 py-3 rounded-xl border text-sm outline-none transition-all ${inputCls} focus:border-purple-400 disabled:opacity-50`} />
+          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => send()} disabled={!input.trim() || loading || user.plan === 'free'}
             className="w-12 h-12 rounded-xl bg-gradient-to-r from-purple-600 to-purple-700 flex items-center justify-center text-white shadow-lg shadow-purple-200 disabled:opacity-50">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 19-7z" /></svg>
           </motion.button>
@@ -2134,12 +2095,12 @@ function AIBuddyTab({ darkMode }: { darkMode: boolean }) {
 }
 
 /* ── BADGES TAB ── */
-function BadgesTab({ darkMode }: { darkMode: boolean }) {
+function BadgesTab({ earnedIds, darkMode }: { earnedIds: string[]; darkMode: boolean }) {
   const cardBg = darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
   const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
   const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
-  const earned = MOCK_BADGES.filter(b => b.earned)
-  const locked = MOCK_BADGES.filter(b => !b.earned)
+  const earned = ALL_BADGES.filter(b => earnedIds.includes(b.id))
+  const locked = ALL_BADGES.filter(b => !earnedIds.includes(b.id))
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -2147,47 +2108,31 @@ function BadgesTab({ darkMode }: { darkMode: boolean }) {
         <h2 className={`font-black text-xl ${textPrimary}`}>Badges 🏆</h2>
         <p className={`text-sm mt-0.5 ${textSecondary}`}>{earned.length} earned · {locked.length} to unlock</p>
       </div>
-
-      {/* XP Summary */}
-      <div className="bg-gradient-to-r from-purple-600 to-pink-500 rounded-2xl p-6 text-white">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <p className="text-purple-100 text-sm font-medium mb-1">Your Progress</p>
-            <p className="font-black text-4xl">Level 5</p>
-            <p className="text-purple-200 text-sm mt-1">Scholar · 450 XP</p>
-          </div>
-          <div className="text-center">
-            <p className="font-black text-6xl">🎓</p>
-          </div>
-        </div>
-        <div className="mt-4">
-          <div className="flex justify-between text-xs text-purple-200 mb-1.5"><span>Level 5</span><span>Level 6 — 50 XP to go</span></div>
-          <div className="h-2 bg-white/20 rounded-full overflow-hidden">
-            <div className="h-full bg-white rounded-full" style={{ width: '50%' }} />
+      {earned.length > 0 && (
+        <div>
+          <p className={`font-bold text-sm mb-3 ${textPrimary}`}>Earned ({earned.length})</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {earned.map(badge => (
+              <motion.div key={badge.id} whileHover={{ y: -4, boxShadow: '0 12px 30px rgba(124,58,237,.15)' }}
+                className={`${cardBg} rounded-2xl p-5 border text-center shadow-sm transition-all`}>
+                <motion.div animate={{ rotate: [0, 5, -5, 0] }} transition={{ duration: 2, repeat: Infinity, delay: Math.random() * 2 }} className="text-4xl mb-3">{badge.icon}</motion.div>
+                <p className={`font-bold text-sm ${textPrimary}`}>{badge.name}</p>
+                <p className={`text-xs mt-1 ${textSecondary}`}>{badge.desc}</p>
+                <p className="text-xs text-purple-500 font-medium mt-2">✅ Earned</p>
+              </motion.div>
+            ))}
           </div>
         </div>
-      </div>
-
-      {/* Earned */}
+      )}
+      {earned.length === 0 && (
+        <div className={`${cardBg} rounded-2xl p-8 border text-center`}>
+          <p className="text-4xl mb-3">🎯</p>
+          <p className={`font-bold ${textPrimary}`}>No badges yet</p>
+          <p className={`text-sm mt-1 ${textSecondary}`}>Complete tasks, study daily, and generate plans to earn badges!</p>
+        </div>
+      )}
       <div>
-        <p className={`font-bold text-sm mb-3 ${textPrimary}`}>Earned Badges ({earned.length})</p>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {earned.map(badge => (
-            <motion.div key={badge.id} whileHover={{ y: -4, boxShadow: '0 12px 30px rgba(124,58,237,.15)' }}
-              className={`${cardBg} rounded-2xl p-5 border text-center shadow-sm transition-all`}>
-              <motion.div animate={{ rotate: [0, 5, -5, 0] }} transition={{ duration: 2, repeat: Infinity, delay: Math.random() * 2 }}
-                className="text-4xl mb-3">{badge.icon}</motion.div>
-              <p className={`font-bold text-sm ${textPrimary}`}>{badge.name}</p>
-              <p className={`text-xs mt-1 ${textSecondary}`}>{badge.desc}</p>
-              <p className="text-xs text-purple-500 font-medium mt-2">Earned {badge.earnedAt}</p>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-
-      {/* Locked */}
-      <div>
-        <p className={`font-bold text-sm mb-3 ${textPrimary}`}>Locked Badges ({locked.length})</p>
+        <p className={`font-bold text-sm mb-3 ${textPrimary}`}>Locked ({locked.length})</p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {locked.map(badge => (
             <div key={badge.id} className={`${cardBg} rounded-2xl p-5 border text-center opacity-50`}>
@@ -2204,78 +2149,74 @@ function BadgesTab({ darkMode }: { darkMode: boolean }) {
 }
 
 /* ── PROFILE TAB ── */
-function ProfileTab({ darkMode, setPage }: { darkMode: boolean; setPage: (p: Page) => void }) {
+function ProfileTab({ user, setUser, darkMode, setPage }: { user: User; setUser: any; darkMode: boolean; setPage: (p: Page) => void }) {
   const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState({ name: 'Amaka Johnson', university: 'University of Lagos', course: 'Computer Science', level: '300 Level', email: 'amaka@studypilot.app' })
+  const [form, setForm] = useState({ name: user.name, university: user.university || '', course: user.course || '', level: user.level || '' })
+  const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
   const cardBg = darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
   const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
   const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
   const inputCls = darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-200'
+  const xpData = getXPLevel(user.xp)
+
+  async function save() {
+    setLoading(true)
+    const data = await api('/api/profile', { method: 'PATCH', body: JSON.stringify(form) })
+    if (data.user) { setUser(data.user); saveUser(data.user); setSuccess(true); setEditing(false); setTimeout(() => setSuccess(false), 3000) }
+    setLoading(false)
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-5">
-      {/* Avatar + name */}
       <div className={`${cardBg} rounded-2xl p-8 border text-center`}>
         <div className="relative inline-block mb-4">
           <div className="w-24 h-24 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-3xl font-black shadow-xl shadow-purple-200">
-            AJ
+            {user.name.charAt(0).toUpperCase()}
           </div>
-          <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: .9 }}
-            className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-purple-600 border-2 border-white flex items-center justify-center text-white text-xs shadow-md">
-            ✏️
-          </motion.button>
         </div>
-        <h2 className={`font-black text-2xl ${textPrimary}`}>{form.name}</h2>
-        <p className={`text-sm mt-1 ${textSecondary}`}>{form.university} · {form.course}</p>
-        <div className="flex items-center justify-center gap-2 mt-2">
-          <span className="text-xs bg-purple-50 text-purple-600 border border-purple-100 px-3 py-1 rounded-full font-bold">✨ Pro Plan</span>
-          <span className="text-xs bg-orange-50 text-orange-500 border border-orange-100 px-3 py-1 rounded-full font-bold">9🔥 Streak</span>
-          <span className="text-xs bg-blue-50 text-blue-500 border border-blue-100 px-3 py-1 rounded-full font-bold">Level 5</span>
+        <h2 className={`font-black text-2xl ${textPrimary}`}>{user.name}</h2>
+        <p className={`text-sm mt-1 ${textSecondary}`}>{user.university || 'Add your university'} {user.course ? `· ${user.course}` : ''}</p>
+        <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
+          <span className={`text-xs px-3 py-1 rounded-full font-bold ${user.plan === 'pro' ? 'bg-purple-50 text-purple-600 border border-purple-100' : 'bg-gray-50 text-gray-500 border border-gray-100'}`}>{user.plan === 'pro' ? '✨ Pro Plan' : 'Free Plan'}</span>
+          <span className="text-xs bg-orange-50 text-orange-500 border border-orange-100 px-3 py-1 rounded-full font-bold">{user.streak}🔥 Streak</span>
+          <span className="text-xs bg-blue-50 text-blue-500 border border-blue-100 px-3 py-1 rounded-full font-bold">Level {xpData.level} {xpData.title}</span>
         </div>
+        {success && <p className="text-green-500 text-sm font-semibold mt-3">✅ Profile updated successfully!</p>}
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
-        {[['89h', 'Total Study Hours'], ['12', 'Day Streak'], ['47', 'Tasks Completed']].map(([v, l], i) => (
+        {[[user.xp, 'XP', 'Total XP'], [user.streak, '🔥', 'Day Streak'], [xpData.level, '', 'Level']].map(([v, s, l], i) => (
           <div key={i} className={`${cardBg} rounded-2xl p-4 border text-center shadow-sm`}>
-            <p className="font-black text-2xl text-purple-600">{v}</p>
+            <p className="font-black text-2xl text-purple-600">{v}{s}</p>
             <p className={`text-xs mt-1 ${textSecondary}`}>{l}</p>
           </div>
         ))}
       </div>
 
-      {/* Edit profile */}
       <div className={`${cardBg} rounded-2xl p-6 border`}>
         <div className="flex items-center justify-between mb-5">
           <h3 className={`font-bold ${textPrimary}`}>Profile Details</h3>
           <Btn sm outline onClick={() => setEditing(!editing)}>{editing ? 'Cancel' : 'Edit Profile'}</Btn>
         </div>
         <div className="space-y-4">
-          {[
-            { key: 'name', label: 'Full Name' },
-            { key: 'email', label: 'Email Address' },
-            { key: 'university', label: 'University' },
-            { key: 'course', label: 'Course / Department' },
-            { key: 'level', label: 'Level / Year' },
-          ].map(field => (
+          {[{ key: 'name', label: 'Full Name' }, { key: 'university', label: 'University' }, { key: 'course', label: 'Course / Department' }, { key: 'level', label: 'Level / Year' }].map(field => (
             <div key={field.key}>
               <label className={`block text-xs font-bold uppercase tracking-wider mb-1.5 ${textSecondary}`}>{field.label}</label>
               {editing ? (
                 <input value={(form as any)[field.key]} onChange={e => setForm({ ...form, [field.key]: e.target.value })}
                   className={`w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all ${inputCls} focus:border-purple-400`} />
               ) : (
-                <p className={`text-sm font-medium ${textPrimary}`}>{(form as any)[field.key]}</p>
+                <p className={`text-sm font-medium ${textPrimary}`}>{(user as any)[field.key] || <span className={textSecondary}>Not set</span>}</p>
               )}
             </div>
           ))}
-          {editing && <Btn onClick={() => setEditing(false)} className="w-full">Save Changes</Btn>}
+          {editing && <Btn onClick={save} className="w-full" disabled={loading}>{loading ? <><Spinner />Saving...</> : 'Save Changes'}</Btn>}
         </div>
       </div>
 
-      {/* Danger zone */}
       <div className={`${cardBg} rounded-2xl p-6 border border-red-200`}>
-        <h3 className="font-bold text-red-500 mb-3">Danger Zone</h3>
-        <p className={`text-sm mb-4 ${textSecondary}`}>These actions are permanent and cannot be undone.</p>
+        <h3 className="font-bold text-red-500 mb-3">Account</h3>
         <div className="flex gap-3 flex-wrap">
           <Btn outline sm onClick={() => setPage('logout')} className="border-red-300 text-red-500 hover:bg-red-50">Log Out</Btn>
           <button className="px-4 py-2 text-sm font-semibold text-red-400 border border-red-200 rounded-xl hover:bg-red-50 transition-all">Delete Account</button>
@@ -2286,19 +2227,25 @@ function ProfileTab({ darkMode, setPage }: { darkMode: boolean; setPage: (p: Pag
 }
 
 /* ── SETTINGS TAB ── */
-function SettingsTab({ darkMode, setDarkMode }: { darkMode: boolean; setDarkMode: (v: boolean) => void }) {
-  const [currency, setCurrency] = useState<'usd' | 'ngn'>('usd')
-  const [notifications, setNotifications] = useState({ exams: true, streak: true, tips: true, weekly: false })
-  const [reminderTime, setReminderTime] = useState('20:00')
+function SettingsTab({ user, darkMode, setDarkMode }: { user: User; darkMode: boolean; setDarkMode: (v: boolean) => void }) {
+  const [notifications, setNotifications] = useState({ exams: user.notify_exams ?? true, streak: user.notify_streak ?? true, tips: user.notify_tips ?? true, weekly: user.notify_weekly ?? false })
+  const [reminderTime, setReminderTime] = useState(user.reminder_time || '20:00')
+  const [currency, setCurrency] = useState<'usd' | 'ngn'>(user.currency || 'usd')
+  const [saving, setSaving] = useState(false)
   const cardBg = darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
   const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
   const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
 
+  async function saveSettings() {
+    setSaving(true)
+    await api('/api/profile', { method: 'PATCH', body: JSON.stringify({ dark_mode: darkMode, currency, notify_exams: notifications.exams, notify_streak: notifications.streak, notify_tips: notifications.tips, notify_weekly: notifications.weekly, reminder_time: reminderTime }) })
+    setSaving(false)
+  }
+
   function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
     return (
       <motion.button onClick={onToggle} className={`w-12 h-6 rounded-full transition-colors flex items-center ${on ? 'bg-purple-600' : 'bg-gray-300'}`}>
-        <motion.div animate={{ x: on ? 24 : 2 }} transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-          className="w-5 h-5 rounded-full bg-white shadow-sm" />
+        <motion.div animate={{ x: on ? 24 : 2 }} transition={{ type: 'spring', damping: 20, stiffness: 300 }} className="w-5 h-5 rounded-full bg-white shadow-sm" />
       </motion.button>
     )
   }
@@ -2307,7 +2254,6 @@ function SettingsTab({ darkMode, setDarkMode }: { darkMode: boolean; setDarkMode
     <div className="max-w-2xl mx-auto space-y-5">
       <h2 className={`font-black text-xl ${textPrimary}`}>Settings ⚙️</h2>
 
-      {/* Appearance */}
       <div className={`${cardBg} rounded-2xl p-6 border`}>
         <h3 className={`font-bold mb-4 ${textPrimary}`}>Appearance</h3>
         <div className="space-y-4">
@@ -2320,25 +2266,17 @@ function SettingsTab({ darkMode, setDarkMode }: { darkMode: boolean; setDarkMode
             <div className="flex gap-2">
               {[['usd', '$ USD'], ['ngn', '₦ NGN']].map(([c, label]) => (
                 <button key={c} onClick={() => setCurrency(c as 'usd' | 'ngn')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${currency === c ? 'border-purple-600 bg-purple-50 text-purple-600' : 'border-gray-200 text-gray-400'}`}>
-                  {label}
-                </button>
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${currency === c ? 'border-purple-600 bg-purple-50 text-purple-600' : 'border-gray-200 text-gray-400'}`}>{label}</button>
               ))}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Notifications */}
       <div className={`${cardBg} rounded-2xl p-6 border`}>
         <h3 className={`font-bold mb-4 ${textPrimary}`}>Notifications</h3>
         <div className="space-y-4">
-          {[
-            { key: 'exams', label: 'Exam Reminders', desc: 'Get notified 3 days before exams' },
-            { key: 'streak', label: 'Streak Alerts', desc: 'Reminders to maintain your study streak' },
-            { key: 'tips', label: 'Study Tips', desc: 'Daily study tips and insights' },
-            { key: 'weekly', label: 'Weekly Report', desc: 'Weekly summary of your progress' },
-          ].map(item => (
+          {[{ key: 'exams', label: 'Exam Reminders', desc: 'Get notified 3 days before exams' }, { key: 'streak', label: 'Streak Alerts', desc: 'Reminders to maintain your study streak' }, { key: 'tips', label: 'Study Tips', desc: 'Daily study tips and insights' }, { key: 'weekly', label: 'Weekly Report', desc: 'Weekly summary of your progress' }].map(item => (
             <div key={item.key} className="flex items-center justify-between">
               <div><p className={`text-sm font-semibold ${textPrimary}`}>{item.label}</p><p className={`text-xs ${textSecondary}`}>{item.desc}</p></div>
               <Toggle on={(notifications as any)[item.key]} onToggle={() => setNotifications(p => ({ ...p, [item.key]: !(p as any)[item.key] }))} />
@@ -2347,23 +2285,15 @@ function SettingsTab({ darkMode, setDarkMode }: { darkMode: boolean; setDarkMode
         </div>
       </div>
 
-      {/* Study reminder */}
       <div className={`${cardBg} rounded-2xl p-6 border`}>
         <h3 className={`font-bold mb-4 ${textPrimary}`}>Study Reminder Time</h3>
-        <p className={`text-sm mb-4 ${textSecondary}`}>We'll remind you to study at this time every day</p>
         <input type="time" value={reminderTime} onChange={e => setReminderTime(e.target.value)}
           className={`px-4 py-3 rounded-xl border text-sm outline-none transition-all ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-200'} focus:border-purple-400`} />
       </div>
 
-      {/* Account */}
-      <div className={`${cardBg} rounded-2xl p-6 border`}>
-        <h3 className={`font-bold mb-4 ${textPrimary}`}>Account</h3>
-        <div className="space-y-3">
-          <button className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-purple-600 hover:bg-purple-50 transition-colors">Change Password →</button>
-          <button className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-purple-600 hover:bg-purple-50 transition-colors">Manage Subscription →</button>
-          <button className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-purple-600 hover:bg-purple-50 transition-colors">Export My Data →</button>
-        </div>
-      </div>
+      <Btn onClick={saveSettings} className="w-full" disabled={saving}>
+        {saving ? <><Spinner />Saving...</> : 'Save Settings'}
+      </Btn>
     </div>
   )
 }
@@ -2373,26 +2303,40 @@ function NotificationsTab({ notifications, setNotifications, darkMode }: any) {
   const cardBg = darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
   const textPrimary = darkMode ? 'text-white' : 'text-gray-900'
   const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
-
   const icons: Record<string, string> = { exam: '📅', streak: '🔥', tip: '💡', system: '🎉' }
+
+  async function markAllRead() {
+    setNotifications((p: Notification[]) => p.map(n => ({ ...n, read: true })))
+    for (const n of notifications.filter((n: Notification) => !n.read)) {
+      await api(`/api/notifications?id=${n.id}`, { method: 'PATCH', body: JSON.stringify({ read: true }) })
+    }
+  }
+
+  async function markRead(id: string) {
+    setNotifications((p: Notification[]) => p.map((n: Notification) => n.id === id ? { ...n, read: true } : n))
+    await api(`/api/notifications?id=${id}`, { method: 'PATCH', body: JSON.stringify({ read: true }) })
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <h2 className={`font-black text-xl ${textPrimary}`}>Notifications 🔔</h2>
-        <button onClick={() => setNotifications((p: Notification[]) => p.map(n => ({ ...n, read: true })))}
-          className="text-xs text-purple-600 font-bold hover:text-purple-700">Mark all read</button>
+        <button onClick={markAllRead} className="text-xs text-purple-600 font-bold hover:text-purple-700">Mark all read</button>
       </div>
-      {notifications.map((n: Notification) => (
+      {notifications.length === 0 ? (
+        <div className={`${cardBg} rounded-2xl p-8 border text-center`}>
+          <p className="text-4xl mb-3">🔔</p>
+          <p className={`font-bold ${textPrimary}`}>No notifications yet</p>
+          <p className={`text-sm mt-1 ${textSecondary}`}>We'll notify you about exams, streaks, and tips</p>
+        </div>
+      ) : notifications.map((n: Notification) => (
         <motion.div key={n.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
           className={`${cardBg} rounded-2xl p-5 border flex items-start gap-4 cursor-pointer transition-all ${!n.read ? darkMode ? 'border-purple-800 bg-purple-900/20' : 'border-purple-100 bg-purple-50/50' : ''}`}
-          onClick={() => setNotifications((p: Notification[]) => p.map((x: Notification) => x.id === n.id ? { ...x, read: true } : x))}>
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
-            {icons[n.type]}
-          </div>
+          onClick={() => markRead(n.id)}>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>{icons[n.type]}</div>
           <div className="flex-1">
             <p className={`text-sm font-semibold ${textPrimary}`}>{n.message}</p>
-            <p className={`text-xs mt-1 ${textSecondary}`}>{n.time}</p>
+            <p className={`text-xs mt-1 ${textSecondary}`}>{timeAgo(n.created_at)}</p>
           </div>
           {!n.read && <div className="w-2.5 h-2.5 rounded-full bg-purple-600 flex-shrink-0 mt-1.5" />}
         </motion.div>
@@ -2408,17 +2352,29 @@ function Pricing({ setPage }: { setPage: (p: Page) => void }) {
   const [yearly, setYearly] = useState(false)
   const [currency, setCurrency] = useState<'usd' | 'ngn'>('usd')
   const [openFaq, setOpenFaq] = useState<number | null>(null)
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
 
   const price = { monthly: currency === 'usd' ? '$8' : '₦9,000', yearly: currency === 'usd' ? '$5' : '₦4,500', yearlySave: currency === 'usd' ? '$36' : '₦54,000' }
 
   const faqs = [
-    { q: 'Can I cancel anytime?', a: 'Yes! No contracts. Cancel from your account settings and keep access until your billing period ends.' },
+    { q: 'Can I cancel anytime?', a: 'Yes! Cancel from your account settings and keep access until your billing period ends.' },
     { q: 'Is the free plan really free forever?', a: 'Yes — free forever with no credit card required. Includes 3 subjects and 3 AI plans per month.' },
-    { q: 'How does the AI generate my plan?', a: 'You enter your subjects, exam dates, and available hours. The AI builds an optimal day-by-day timetable in seconds.' },
-    { q: 'Do you support Paystack?', a: 'Yes! Paystack is fully supported for Nigerian users — card, bank transfer, and USSD. International users can pay via card in USD.' },
-    { q: "What's the 7-day free trial?", a: 'Sign up for Pro and get full access free for 7 days. No charge until the trial ends. Cancel anytime before.' },
-    { q: 'Is my data secure?', a: 'Yes. All data is encrypted in transit and at rest. We use Supabase for secure data storage and never sell your data to third parties.' },
+    { q: 'How does the AI generate my plan?', a: 'You enter your subjects, exam dates, and available hours. The AI builds an optimal 7-day timetable in seconds.' },
+    { q: 'Do you support Paystack?', a: 'Yes! Paystack is fully supported — card, bank transfer, and USSD.' },
+    { q: "What's the 7-day free trial?", a: 'Sign up for Pro and get full access free for 7 days. Cancel anytime before the trial ends.' },
   ]
+
+  async function subscribe(plan: 'monthly' | 'yearly') {
+    const user = getUser()
+    if (!user) { setPage('signup'); return }
+    setLoadingPlan(plan)
+    try {
+      const data = await api('/api/payments/initialize', { method: 'POST', body: JSON.stringify({ plan }) })
+      if (data.authorization_url) window.location.href = data.authorization_url
+      else alert(data.error || 'Payment failed')
+    } catch { alert('Something went wrong') }
+    setLoadingPlan(null)
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -2429,15 +2385,14 @@ function Pricing({ setPage }: { setPage: (p: Page) => void }) {
           <motion.div variants={fadeUp} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-100 text-purple-600 text-xs font-bold px-4 py-2 rounded-full mb-6">Pricing</motion.div>
           <motion.h1 variants={fadeUp} className="text-4xl md:text-5xl font-black text-gray-900 mb-4 tracking-tight">Simple, Transparent Pricing</motion.h1>
           <motion.p variants={fadeUp} className="text-gray-400 text-lg mb-8 max-w-md mx-auto">Start free. No hidden fees. Upgrade only when you need more.</motion.p>
-          {/* Currency toggle */}
-          <motion.div variants={fadeUp} className="flex justify-center gap-3 mb-4 flex-wrap">
+          <motion.div variants={fadeUp} className="flex justify-center gap-3 flex-wrap">
             <div className="inline-flex bg-white border border-gray-200 rounded-full p-1 gap-1 shadow-sm">
               <button onClick={() => setCurrency('usd')} className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${currency === 'usd' ? 'bg-purple-600 text-white shadow' : 'text-gray-400'}`}>🌍 USD $</button>
               <button onClick={() => setCurrency('ngn')} className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${currency === 'ngn' ? 'bg-purple-600 text-white shadow' : 'text-gray-400'}`}>🇳🇬 NGN ₦</button>
             </div>
             <div className="inline-flex bg-gray-100 rounded-full p-1.5 gap-1">
-              <button onClick={() => setYearly(false)} className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${!yearly ? 'bg-white shadow text-purple-600' : 'text-gray-400 hover:text-gray-600'}`}>Monthly</button>
-              <button onClick={() => setYearly(true)} className={`px-5 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-1.5 ${yearly ? 'bg-white shadow text-purple-600' : 'text-gray-400 hover:text-gray-600'}`}>
+              <button onClick={() => setYearly(false)} className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${!yearly ? 'bg-white shadow text-purple-600' : 'text-gray-400'}`}>Monthly</button>
+              <button onClick={() => setYearly(true)} className={`px-5 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-1.5 ${yearly ? 'bg-white shadow text-purple-600' : 'text-gray-400'}`}>
                 Yearly <span className="text-green-500 text-xs font-black">Save 40%</span>
               </button>
             </div>
@@ -2458,9 +2413,9 @@ function Pricing({ setPage }: { setPage: (p: Page) => void }) {
                     <div className="w-4 h-4 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg></div>{f}
                   </li>
                 ))}
-                {['Advanced analytics', 'Exam readiness score', 'Smart reminders'].map(f => (
+                {['Advanced analytics', 'Exam readiness score', 'AI Study Buddy'].map(f => (
                   <li key={f} className="flex items-center gap-2.5 text-sm text-gray-300">
-                    <div className="w-4 h-4 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0"><span className="text-[10px] text-gray-300">✕</span></div>{f}
+                    <div className="w-4 h-4 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0"><span className="text-[10px]">✕</span></div>{f}
                   </li>
                 ))}
               </ul>
@@ -2487,19 +2442,21 @@ function Pricing({ setPage }: { setPage: (p: Page) => void }) {
                     </li>
                   ))}
                 </ul>
-                <Btn white onClick={() => setPage('signup')} className="w-full">Start 7-Day Free Trial →</Btn>
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .97 }}
+                  onClick={() => subscribe(yearly ? 'yearly' : 'monthly')}
+                  disabled={loadingPlan !== null}
+                  className="w-full bg-white text-purple-700 font-bold py-3.5 rounded-xl text-sm shadow-lg hover:bg-purple-50 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                  {loadingPlan ? <><Spinner />Redirecting to payment...</> : 'Start 7-Day Free Trial →'}
+                </motion.button>
               </div>
             </motion.div>
           </Reveal>
         </div>
       </section>
 
-      {/* FAQ */}
       <section className="pb-20 px-6">
         <div className="max-w-2xl mx-auto">
-          <Reveal className="text-center mb-10">
-            <h2 className="text-3xl font-black text-gray-900 tracking-tight">Frequently Asked Questions</h2>
-          </Reveal>
+          <Reveal className="text-center mb-10"><h2 className="text-3xl font-black text-gray-900 tracking-tight">Frequently Asked Questions</h2></Reveal>
           <div className="space-y-3">
             {faqs.map((faq, i) => (
               <Reveal key={i} delay={i * .05}>
@@ -2522,7 +2479,6 @@ function Pricing({ setPage }: { setPage: (p: Page) => void }) {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="bg-white border-t border-gray-100 py-12 px-6">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <Logo onClick={() => setPage('home')} />
@@ -2548,39 +2504,14 @@ function About({ setPage }: { setPage: (p: Page) => void }) {
       <section className="pt-28 pb-16 px-6 text-center bg-gradient-to-b from-purple-50/40 to-white">
         <motion.div initial="hidden" animate="show" variants={stagger(.1)}>
           <motion.div variants={fadeUp} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-100 text-purple-600 text-xs font-bold px-4 py-2 rounded-full mb-6">About Us</motion.div>
-          <motion.h1 variants={fadeUp} className="text-4xl md:text-5xl font-black text-gray-900 mb-4">We&apos;re building the future<br />of student productivity</motion.h1>
-          <motion.p variants={fadeUp} className="text-gray-400 text-lg max-w-2xl mx-auto">StudyPilot was built by Coderift Studio — a team of designers, developers, and project managers who believe every student deserves a smart, personalized way to study.</motion.p>
+          <motion.h1 variants={fadeUp} className="text-4xl md:text-5xl font-black text-gray-900 mb-4">We're building the future<br />of student productivity</motion.h1>
+          <motion.p variants={fadeUp} className="text-gray-400 text-lg max-w-2xl mx-auto">StudyPilot was built by Coderift Studio — a team of designers and developers who believe every student deserves a smart, personalized way to study.</motion.p>
         </motion.div>
       </section>
-
       <section className="py-20 px-6">
         <div className="max-w-4xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center mb-20">
-            <Reveal>
-              <h2 className="text-3xl font-black text-gray-900 mb-4">Our Mission</h2>
-              <p className="text-gray-500 leading-relaxed mb-4">We believe the biggest barrier to academic success isn&apos;t intelligence — it&apos;s poor planning and inconsistency. Most students know what to study, they just don&apos;t know how to organize their time effectively.</p>
-              <p className="text-gray-500 leading-relaxed">StudyPilot uses AI to solve exactly that. We build personalized study plans that adapt to your schedule, track your progress automatically, and keep you motivated with a gamified experience that makes studying feel rewarding.</p>
-            </Reveal>
-            <Reveal delay={.2}>
-              <div className="bg-gradient-to-br from-purple-600 to-pink-500 rounded-2xl p-8 text-white text-center">
-                <div className="text-6xl mb-4">🎓</div>
-                <p className="font-black text-2xl mb-2">Built for Students</p>
-                <p className="text-purple-100">From Nigeria and beyond — every feature is designed with real student needs in mind.</p>
-              </div>
-            </Reveal>
-          </div>
-
-          <Reveal className="text-center mb-12">
-            <h2 className="text-3xl font-black text-gray-900 mb-3">Built by Coderift Studio</h2>
-            <p className="text-gray-400 max-w-xl mx-auto">Coderift Studio is a curated team of designers, developers, and project managers building innovative digital products across web, mobile, and AI.</p>
-          </Reveal>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-            {[
-              { icon: '🎯', title: 'Precision Execution', desc: 'Every feature is built with care, tested thoroughly, and refined before release.' },
-              { icon: '💡', title: 'Student-First Design', desc: 'Every decision starts with one question — does this make studying better for students?' },
-              { icon: '🌍', title: 'Built for Africa & Beyond', desc: 'Designed with Nigerian students in mind but built for students worldwide.' },
-            ].map((v, i) => (
+            {[{ icon: '🎯', title: 'Precision Execution', desc: 'Every feature is built with care, tested thoroughly, and refined before release.' }, { icon: '💡', title: 'Student-First Design', desc: 'Every decision starts with: does this make studying better for students?' }, { icon: '🌍', title: 'Built for Africa & Beyond', desc: 'Designed with Nigerian students in mind but built for students worldwide.' }].map((v, i) => (
               <Reveal key={i} delay={i * .1}>
                 <motion.div whileHover={{ y: -4 }} className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm text-center">
                   <div className="text-3xl mb-4">{v.icon}</div>
@@ -2590,23 +2521,17 @@ function About({ setPage }: { setPage: (p: Page) => void }) {
               </Reveal>
             ))}
           </div>
-
           <div className="text-center">
             <Btn onClick={() => setPage('signup')} className="mr-3">Get Started Free →</Btn>
             <Btn outline onClick={() => setPage('contact')}>Contact Us</Btn>
           </div>
         </div>
       </section>
-
       <footer className="bg-white border-t border-gray-100 py-12 px-6">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <Logo onClick={() => setPage('home')} />
           <p className="text-gray-400 text-sm">© 2026 StudyPilot by Coderift Studio.</p>
-          <div className="flex gap-5">
-            {[['Pricing', 'pricing'], ['Privacy', 'privacy'], ['Contact', 'contact']].map(([l, p]) => (
-              <button key={l} onClick={() => setPage(p as Page)} className="text-gray-400 text-sm hover:text-purple-600 transition-colors">{l}</button>
-            ))}
-          </div>
+          <div className="flex gap-5">{[['Pricing', 'pricing'], ['Privacy', 'privacy'], ['Contact', 'contact']].map(([l, p]) => <button key={l} onClick={() => setPage(p as Page)} className="text-gray-400 text-sm hover:text-purple-600">{l}</button>)}</div>
         </div>
       </footer>
     </div>
@@ -2622,8 +2547,8 @@ function Contact({ setPage }: { setPage: (p: Page) => void }) {
   const [loading, setLoading] = useState(false)
 
   async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true); await new Promise(r => setTimeout(r, 1200)); setLoading(false); setSent(true)
+    e.preventDefault(); setLoading(true)
+    await new Promise(r => setTimeout(r, 1000)); setSent(true); setLoading(false)
   }
 
   return (
@@ -2632,37 +2557,32 @@ function Contact({ setPage }: { setPage: (p: Page) => void }) {
       <section className="pt-28 pb-16 px-6 text-center bg-gradient-to-b from-purple-50/40 to-white">
         <motion.div initial="hidden" animate="show" variants={stagger(.1)}>
           <motion.div variants={fadeUp} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-100 text-purple-600 text-xs font-bold px-4 py-2 rounded-full mb-6">Contact Us</motion.div>
-          <motion.h1 variants={fadeUp} className="text-4xl md:text-5xl font-black text-gray-900 mb-4">We&apos;d love to hear from you</motion.h1>
+          <motion.h1 variants={fadeUp} className="text-4xl md:text-5xl font-black text-gray-900 mb-4">We'd love to hear from you</motion.h1>
           <motion.p variants={fadeUp} className="text-gray-400 text-lg max-w-md mx-auto">Have a question, bug report, or just want to say hi? We reply within 24 hours.</motion.p>
         </motion.div>
       </section>
-
       <section className="pb-20 px-6">
         <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12">
           <Reveal>
             <div className="space-y-6">
               {[
-                { icon: '✉️', title: 'Email', info: 'hello@studypilot.app', desc: 'We reply within 24 hours' },
-                { icon: '💬', title: 'WhatsApp', info: '+234 900 000 0000', desc: 'Chat with us directly' },
-                { icon: '🐦', title: 'Twitter/X', info: '@studypilot', desc: 'DM us anytime' },
-                { icon: '📍', title: 'Location', info: 'Lagos, Nigeria', desc: 'Operating worldwide' },
+                { icon: '✉️', title: 'Email', info: 'fadlullahoyedola@gmail.com', desc: 'Primary support email', href: 'mailto:fadlullahoyedola@gmail.com' },
+                { icon: '✉️', title: 'Email 2', info: 'bazarmayokun@gmail.com', desc: 'Alternative support email', href: 'mailto:bazarmayokun@gmail.com' },
+                { icon: '📞', title: 'Phone / WhatsApp', info: '09057580118', desc: 'Call or WhatsApp us', href: 'tel:+2349057580118' },
+                { icon: '📞', title: 'Phone 2', info: '08103104787', desc: 'Alternative line', href: 'tel:+2348103104787' },
+                { icon: '📞', title: 'Phone 3', info: '09136046283', desc: 'Alternative line', href: 'tel:+2349136046283' },
+                { icon: '📍', title: 'Location', info: 'Lagos, Nigeria', desc: 'Operating worldwide', href: '#' },
               ].map((item, i) => (
-                <div key={i} className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-xl flex-shrink-0">{item.icon}</div>
-                  <div>
-                    <p className="font-bold text-gray-900 text-sm">{item.title}</p>
-                    <p className="text-purple-600 font-medium text-sm">{item.info}</p>
-                    <p className="text-gray-400 text-xs mt-0.5">{item.desc}</p>
-                  </div>
-                </div>
+                <a key={i} href={item.href} className="flex items-start gap-4 group">
+                  <div className="w-12 h-12 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-xl flex-shrink-0 group-hover:bg-purple-100 transition-colors">{item.icon}</div>
+                  <div><p className="font-bold text-gray-900 text-sm">{item.title}</p><p className="text-purple-600 font-medium text-sm group-hover:text-purple-700">{item.info}</p><p className="text-gray-400 text-xs mt-0.5">{item.desc}</p></div>
+                </a>
               ))}
             </div>
           </Reveal>
-
           <Reveal delay={.2}>
             {sent ? (
-              <motion.div initial={{ opacity: 0, scale: .95 }} animate={{ opacity: 1, scale: 1 }}
-                className="bg-white border border-gray-100 rounded-2xl p-8 shadow-sm text-center">
+              <motion.div initial={{ opacity: 0, scale: .95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white border border-gray-100 rounded-2xl p-8 shadow-sm text-center">
                 <div className="text-5xl mb-4">🎉</div>
                 <h3 className="font-black text-gray-900 text-xl mb-2">Message sent!</h3>
                 <p className="text-gray-400">We'll get back to you within 24 hours.</p>
@@ -2671,7 +2591,7 @@ function Contact({ setPage }: { setPage: (p: Page) => void }) {
             ) : (
               <div className="bg-white border border-gray-100 rounded-2xl p-8 shadow-sm">
                 <form onSubmit={submit} className="space-y-4">
-                  {[{ key: 'name', label: 'Full Name', type: 'text', ph: 'Amaka Johnson' }, { key: 'email', label: 'Email', type: 'email', ph: 'you@email.com' }, { key: 'subject', label: 'Subject', type: 'text', ph: 'How can we help?' }].map(f => (
+                  {[{ key: 'name', label: 'Full Name', type: 'text', ph: 'Your name' }, { key: 'email', label: 'Email', type: 'email', ph: 'you@email.com' }, { key: 'subject', label: 'Subject', type: 'text', ph: 'How can we help?' }].map(f => (
                     <div key={f.key}>
                       <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{f.label}</label>
                       <input type={f.type} placeholder={f.ph} value={(form as any)[f.key]} onChange={e => setForm({ ...form, [f.key]: e.target.value })}
@@ -2685,7 +2605,7 @@ function Contact({ setPage }: { setPage: (p: Page) => void }) {
                   </div>
                   <motion.button type="submit" whileHover={{ scale: 1.01 }} whileTap={{ scale: .98 }} disabled={loading}
                     className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold py-3.5 rounded-xl text-sm shadow-lg shadow-purple-200 disabled:opacity-60 flex items-center justify-center gap-2">
-                    {loading ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Sending...</> : 'Send Message →'}
+                    {loading ? <><Spinner />Sending...</> : 'Send Message →'}
                   </motion.button>
                 </form>
               </div>
@@ -2693,16 +2613,11 @@ function Contact({ setPage }: { setPage: (p: Page) => void }) {
           </Reveal>
         </div>
       </section>
-
       <footer className="bg-white border-t border-gray-100 py-12 px-6">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <Logo onClick={() => setPage('home')} />
           <p className="text-gray-400 text-sm">© 2026 StudyPilot by Coderift Studio.</p>
-          <div className="flex gap-5">
-            {[['Privacy', 'privacy'], ['Terms', 'terms']].map(([l, p]) => (
-              <button key={l} onClick={() => setPage(p as Page)} className="text-gray-400 text-sm hover:text-purple-600">{l}</button>
-            ))}
-          </div>
+          <div className="flex gap-5">{[['Privacy', 'privacy'], ['Terms', 'terms']].map(([l, p]) => <button key={l} onClick={() => setPage(p as Page)} className="text-gray-400 text-sm hover:text-purple-600">{l}</button>)}</div>
         </div>
       </footer>
     </div>
@@ -2710,7 +2625,7 @@ function Contact({ setPage }: { setPage: (p: Page) => void }) {
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   PRIVACY + TERMS PAGES
+   LEGAL PAGES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function LegalPage({ setPage, type }: { setPage: (p: Page) => void; type: 'privacy' | 'terms' }) {
   const isPrivacy = type === 'privacy'
@@ -2721,45 +2636,18 @@ function LegalPage({ setPage, type }: { setPage: (p: Page) => void; type: 'priva
         <div className="max-w-3xl mx-auto">
           <BackBtn onClick={() => setPage('home')} />
           <h1 className="text-4xl font-black text-gray-900 mb-2">{isPrivacy ? 'Privacy Policy' : 'Terms of Service'}</h1>
-          <p className="text-gray-400 mb-10">Last updated: March 17, 2026</p>
-
-          <div className="prose space-y-8">
+          <p className="text-gray-400 mb-10">Last updated: March 20, 2026</p>
+          <div className="space-y-8">
             {isPrivacy ? (
-              <>
-                {[
-                  { title: 'Information We Collect', content: 'We collect information you provide directly: name, email, university, and study data (subjects, tasks, study plans). We also collect usage data to improve the app.' },
-                  { title: 'How We Use Your Information', content: 'We use your information to provide and improve StudyPilot, generate AI study plans, send important notifications, and personalize your experience.' },
-                  { title: 'Data Storage', content: 'Your data is stored securely using Supabase infrastructure. All data is encrypted in transit and at rest. We never sell your personal data to third parties.' },
-                  { title: 'Cookies', content: 'We use essential cookies to keep you logged in and remember your preferences. You can disable non-essential cookies at any time.' },
-                  { title: 'Your Rights', content: 'You have the right to access, correct, or delete your personal data at any time. Contact us at hello@studypilot.app to exercise these rights.' },
-                  { title: 'Contact Us', content: 'For privacy concerns, contact us at hello@studypilot.app. We respond within 48 hours.' },
-                ].map((section, i) => (
-                  <div key={i}>
-                    <h2 className="text-xl font-black text-gray-900 mb-3">{i + 1}. {section.title}</h2>
-                    <p className="text-gray-500 leading-relaxed">{section.content}</p>
-                  </div>
-                ))}
-              </>
+              [{ title: 'Information We Collect', content: 'We collect information you provide: name, email, university, and study data (subjects, tasks, plans). We also collect usage data to improve the app.' }, { title: 'How We Use Your Information', content: 'We use your information to provide StudyPilot, generate AI study plans, send notifications, and personalize your experience.' }, { title: 'Data Storage', content: 'Your data is stored securely using Supabase. All data is encrypted in transit and at rest. We never sell your data to third parties.' }, { title: 'Cookies', content: 'We use essential cookies to keep you logged in. You can disable non-essential cookies at any time.' }, { title: 'Your Rights', content: 'You have the right to access, correct, or delete your data. Contact us at hello@studypilot.app.' }, { title: 'Contact', content: 'For privacy concerns, contact us at hello@studypilot.app. We respond within 48 hours.' }].map((section, i) => (
+                <div key={i}><h2 className="text-xl font-black text-gray-900 mb-3">{i + 1}. {section.title}</h2><p className="text-gray-500 leading-relaxed">{section.content}</p></div>
+              ))
             ) : (
-              <>
-                {[
-                  { title: 'Acceptance of Terms', content: 'By using StudyPilot, you agree to these Terms of Service. If you do not agree, please do not use our service.' },
-                  { title: 'Use of Service', content: 'StudyPilot is intended for educational use by students. You must be 13 years or older to use this service. You are responsible for maintaining the security of your account.' },
-                  { title: 'Free and Paid Plans', content: 'The free plan is available indefinitely with limited features. Pro plans are billed monthly or yearly. Prices are shown in USD and NGN. All payments are processed securely via Paystack.' },
-                  { title: 'Cancellation', content: 'You can cancel your subscription at any time from account settings. You retain access until the end of your current billing period. We do not offer refunds for partial months.' },
-                  { title: 'Intellectual Property', content: 'StudyPilot and all its content are owned by Coderift Studio. You may not copy, reproduce, or redistribute any part of the service without written permission.' },
-                  { title: 'Limitation of Liability', content: 'StudyPilot is provided "as is". We make no guarantees about academic performance. We are not liable for any indirect, incidental, or consequential damages.' },
-                  { title: 'Contact', content: 'Questions about these terms? Email us at hello@studypilot.app' },
-                ].map((section, i) => (
-                  <div key={i}>
-                    <h2 className="text-xl font-black text-gray-900 mb-3">{i + 1}. {section.title}</h2>
-                    <p className="text-gray-500 leading-relaxed">{section.content}</p>
-                  </div>
-                ))}
-              </>
+              [{ title: 'Acceptance of Terms', content: 'By using StudyPilot, you agree to these Terms. If you do not agree, please do not use our service.' }, { title: 'Use of Service', content: 'StudyPilot is for educational use by students aged 13+. You are responsible for maintaining account security.' }, { title: 'Free and Paid Plans', content: 'The free plan is available indefinitely with limited features. Pro plans are billed monthly or yearly via Paystack.' }, { title: 'Cancellation', content: 'Cancel anytime from account settings. You retain access until the end of your billing period. No refunds for partial months.' }, { title: 'Intellectual Property', content: 'StudyPilot and all content are owned by Coderift Studio. Do not copy or redistribute without permission.' }, { title: 'Limitation of Liability', content: 'StudyPilot is provided "as is". We make no guarantees about academic performance outcomes.' }, { title: 'Contact', content: 'Questions? Email us at hello@studypilot.app' }].map((section, i) => (
+                <div key={i}><h2 className="text-xl font-black text-gray-900 mb-3">{i + 1}. {section.title}</h2><p className="text-gray-500 leading-relaxed">{section.content}</p></div>
+              ))
             )}
           </div>
-
           <div className="mt-12 p-6 bg-purple-50 border border-purple-100 rounded-2xl">
             <p className="text-gray-600 text-sm">Questions? Contact us at <a href="mailto:hello@studypilot.app" className="text-purple-600 font-semibold">hello@studypilot.app</a></p>
           </div>
@@ -2794,7 +2682,19 @@ function NotFound({ setPage }: { setPage: (p: Page) => void }) {
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 export default function App() {
   const [page, setPage] = useState<Page>('home')
-  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }) }, [page])
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [page])
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const token = getToken()
+    const user = getUser()
+    if (token && user && page === 'home') {
+      // User is already logged in — they can navigate to dashboard
+    }
+  }, [])
 
   return (
     <AnimatePresence mode="wait">
@@ -2814,4 +2714,4 @@ export default function App() {
       </motion.div>
     </AnimatePresence>
   )
-}
+} 
